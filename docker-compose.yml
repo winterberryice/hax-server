@@ -1,0 +1,25 @@
+version: '3.8' # Specifying a version is good practice
+
+services:
+  haxball-server:
+    build: .
+    restart: unless-stopped
+    # Attach this service to the external network.
+    networks:
+      - playwright_network
+    # Pass the WS_PATH from a .env file or the environment to the container.
+    # This should match the WS_PATH used by your playwright-server.
+    environment:
+      - WS_PATH=${WS_PATH}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  # Define the network to be used by the service.
+  playwright_network:
+    # Specify the actual name of the existing external network.
+    name: playwright-server
+    external: true

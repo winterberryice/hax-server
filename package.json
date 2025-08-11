@@ -1,0 +1,19 @@
+{
+  "name": "haxball-server",
+  "version": "1.0.0",
+  "description": "A Haxball server that connects to a remote Playwright instance.",
+  "main": "haxball.mjs",
+  "type": "module",
+  "scripts": {
+    "start": "node haxball.mjs"
+  },
+  "keywords": [
+    "haxball",
+    "playwright"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "playwright": "^1.48.2"
+  }
+}
