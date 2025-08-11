@@ -62,38 +62,21 @@
         const API_BASE_URL = ''; // Current origin
         const HAXBALL_TOKEN_URL = 'https://www.haxball.com/headlesstoken';
 
-        async function updateStatus() {
-            try {
-                const response = await fetch(`${API_BASE_URL}/status`);
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                const state = await response.json();
+        function updateUI(state) {
+            statusMessageEl.textContent = state.status_message || 'N/A';
+            statusMessageEl.style.color = state.status === 'running' ? 'green' : (state.status === 'stopped' ? 'red' : 'orange');
 
-                statusMessageEl.textContent = state.status_message || 'N/A';
-                statusMessageEl.style.color = state.status === 'running' ? 'green' : (state.status === 'stopped' ? 'red' : 'orange');
-
-                if (state.room_url) {
-                    roomLinkEl.href = state.room_url;
-                    roomLinkEl.textContent = state.room_url;
-                } else {
-                    roomLinkEl.href = '#';
-                    roomLinkEl.textContent = 'N/A';
-                }
-
-                // Room can only be started if it's stopped.
-                startBtn.disabled = state.status !== 'stopped';
-                // Stop button should be active if the room is running or in the process of starting.
-                stopBtn.disabled = state.status === 'stopped';
-                // Captcha can be fetched only when the room is stopped.
-                getCaptchaBtn.disabled = state.status !== 'stopped';
-
-            } catch (error) {
-                statusMessageEl.textContent = 'Error connecting to server. Is it running?';
-                statusMessageEl.style.color = 'red';
-                console.error('Error fetching status:', error);
-                startBtn.disabled = true;
-                stopBtn.disabled = true;
-                getCaptchaBtn.disabled = true;
+            if (state.room_url) {
+                roomLinkEl.href = state.room_url;
+                roomLinkEl.textContent = state.room_url;
+            } else {
+                roomLinkEl.href = '#';
+                roomLinkEl.textContent = 'N/A';
             }
+
+            startBtn.disabled = state.status !== 'stopped';
+            stopBtn.disabled = state.status === 'stopped' || state.status === 'stopping';
+            getCaptchaBtn.disabled = state.status !== 'stopped';
         }
 
         async function postAction(endpoint, body = null) {
@@ -104,28 +87,26 @@
                     body: body ? JSON.stringify(body) : null
                 };
                 const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
-                const responseData = await response.json();
                 if (!response.ok) {
+                    const responseData = await response.json();
                     throw new Error(responseData.message || 'Request failed');
                 }
-                await updateStatus();
+                // Status updates will be handled by the SSE connection.
             } catch (error) {
                 alert(`An error occurred: ${error.message}`);
                 console.error(`Error with ${endpoint}:`, error);
-                await updateStatus();
             }
         }
 
         getCaptchaBtn.addEventListener('click', () => {
             captchaContainer.classList.remove('hidden');
-            // Add a timestamp to the URL to force a refresh, preventing cached/solved captchas
             captchaIframe.src = `${HAXBALL_TOKEN_URL}?_=${Date.now()}`;
         });
 
         startBtn.addEventListener('click', () => {
             const token = tokenInput.value.trim();
             if (!token) {
-                alert('Please get a CAPTCHA token first.');
+                alert('Please provide a reCAPTCHA token.');
                 return;
             }
             postAction('/start', { token });
@@ -133,24 +114,30 @@
 
         stopBtn.addEventListener('click', () => postAction('/stop'));
 
-        // Listen for messages from the iframe for semi-automatic token grabbing
         window.addEventListener('message', (event) => {
-            // IMPORTANT: Check the origin of the message for security
-            if (event.origin !== "https://www.haxball.com") {
-                return;
-            }
-
-            // The haxball token page sends the token as a string in the data property.
-            if (typeof event.data === 'string' && event.data.length > 50) { // Tokens are long strings
+            if (event.origin !== "https://www.haxball.com") return;
+            if (typeof event.data === 'string' && event.data.length > 50) {
                 console.log('Received token from iframe:', event.data);
                 tokenInput.value = event.data;
             }
         });
 
-        // Fetch status every 3 seconds
-        setInterval(updateStatus, 3000);
-        // Initial status update
-        document.addEventListener('DOMContentLoaded', updateStatus);
+        // Initialize SSE connection
+        const eventSource = new EventSource('/events');
+
+        eventSource.onmessage = (event) => {
+            const state = JSON.parse(event.data);
+            updateUI(state);
+        };
+
+        eventSource.onerror = (err) => {
+            console.error('EventSource failed:', err);
+            statusMessageEl.textContent = 'Connection to server lost. Please refresh the page.';
+            statusMessageEl.style.color = 'red';
+            startBtn.disabled = true;
+            stopBtn.disabled = true;
+            getCaptchaBtn.disabled = true;
+        };
     </script>
 </body>
 </html>
