@@ -5,7 +5,7 @@
   "main": "haxball.mjs",
   "type": "module",
   "scripts": {
-    "start": "node haxball.mjs"
+    "start": "node server.mjs"
   },
   "keywords": [
     "haxball",

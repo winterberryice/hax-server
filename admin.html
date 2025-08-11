@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Haxball Admin</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; padding: 1em; max-width: 800px; margin: 0 auto; }
+        h1, h2 { color: #333; }
+        #controls button { font-size: 1em; padding: 0.5em 1em; margin-right: 0.5em; cursor: pointer; }
+        #controls button:disabled { cursor: not-allowed; opacity: 0.6; }
+        #status { background-color: #f4f4f4; padding: 1em; border-radius: 5px; }
+        #room-link { color: #007bff; }
+        #captcha-section { display: none; margin-top: 1.5em; padding: 1em; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9; }
+        #captcha-section h3 { margin-top: 0; }
+        #token-input { width: 100%; box-sizing: border-box; padding: 0.5em; margin-top: 0.5em; }
+        #captcha-iframe-container { margin-top: 1em; }
+        iframe { border: 1px solid #ccc; }
+    </style>
+</head>
+<body>
+    <h1>Haxball Admin Panel</h1>
+
+    <div id="status">
+        <h2>Status</h2>
+        <p><b id="status-message">Connecting...</b></p>
+        <p><strong>Room URL:</strong> <a id="room-link" href="#" target="_blank" rel="noopener noreferrer">N/A</a></p>
+    </div>
+
+    <div id="controls" style="margin-top: 1.5em;">
+        <h2>Controls</h2>
+        <button id="start-btn">Start Room</button>
+        <button id="stop-btn">Stop Room</button>
+    </div>
+
+    <div id="captcha-section">
+        <h3>Captcha Required</h3>
+        <p>A captcha must be solved to create the room. Haxball uses reCAPTCHA v2.</p>
+        <ol>
+            <li>Open the captcha page by clicking <a id="captcha-external-link" href="#" target="_blank" rel="noopener noreferrer">this link</a>.</li>
+            <li>Solve the captcha there.</li>
+            <li>After solving, you'll get a long text string (the token).</li>
+            <li>Copy the token and paste it into the text area below.</li>
+            <li>Click "Submit Token".</li>
+        </ol>
+
+        <label for="token-input"><b>Paste Token Here:</b></label><br>
+        <textarea id="token-input" rows="5" cols="50" placeholder="Paste the long token string here..."></textarea><br>
+        <button id="submit-token-btn" style="margin-top: 0.5em;">Submit Token</button>
+    </div>
+
+    <script>
+        const statusMessageEl = document.getElementById('status-message');
+        const roomLinkEl = document.getElementById('room-link');
+        const startBtn = document.getElementById('start-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const captchaSection = document.getElementById('captcha-section');
+        const captchaExternalLink = document.getElementById('captcha-external-link');
+        const tokenInput = document.getElementById('token-input');
+        const submitTokenBtn = document.getElementById('submit-token-btn');
+
+        const API_BASE_URL = ''; // Current origin
+
+        async function updateStatus() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/status`);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const state = await response.json();
+
+                statusMessageEl.textContent = state.status_message || 'N/A';
+                statusMessageEl.style.color = state.status === 'running' ? 'green' : (state.status === 'stopped' ? 'red' : 'orange');
+
+                if (state.room_url) {
+                    roomLinkEl.href = state.room_url;
+                    roomLinkEl.textContent = state.room_url;
+                } else {
+                    roomLinkEl.href = '#';
+                    roomLinkEl.textContent = 'N/A';
+                }
+
+                if (state.status === 'waiting_for_captcha' && state.captcha_info && state.captcha_info.sitekey) {
+                    captchaSection.style.display = 'block';
+                    const sitekey = state.captcha_info.sitekey;
+                    // Construct a URL to a simple page that ONLY has the reCAPTCHA challenge.
+                    // This is more reliable than an iframe for user interaction.
+                    const captchaUrl = `https://www.google.com/recaptcha/api/fallback?k=${sitekey}`;
+                    captchaExternalLink.href = captchaUrl;
+                } else {
+                    captchaSection.style.display = 'none';
+                }
+
+                startBtn.disabled = state.status !== 'stopped';
+                stopBtn.disabled = state.status !== 'running';
+                submitTokenBtn.disabled = state.status !== 'waiting_for_captcha';
+
+            } catch (error) {
+                statusMessageEl.textContent = 'Error connecting to server. Is it running?';
+                statusMessageEl.style.color = 'red';
+                console.error('Error fetching status:', error);
+                startBtn.disabled = true;
+                stopBtn.disabled = true;
+            }
+        }
+
+        async function postAction(endpoint, body = null) {
+            try {
+                const options = {
+                    method: 'POST',
+                    headers: body ? { 'Content-Type': 'application/json' } : {},
+                    body: body ? JSON.stringify(body) : null
+                };
+                const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || 'Request failed');
+                }
+                await updateStatus(); // Refresh status immediately after action
+            } catch (error) {
+                alert(`An error occurred: ${error.message}`);
+                console.error(`Error with ${endpoint}:`, error);
+                await updateStatus(); // Refresh status to show latest state from server
+            }
+        }
+
+        startBtn.addEventListener('click', () => postAction('/start'));
+        stopBtn.addEventListener('click', () => postAction('/stop'));
+
+        submitTokenBtn.addEventListener('click', () => {
+            const token = tokenInput.value.trim();
+            if (!token) {
+                alert('Please paste the token before submitting.');
+                return;
+            }
+            postAction('/submit-token', { token });
+            tokenInput.value = '';
+        });
+
+        // Fetch status every 3 seconds to keep the UI up-to-date
+        setInterval(updateStatus, 3000);
+        // Initial status update on page load
+        document.addEventListener('DOMContentLoaded', updateStatus);
+    </script>
+</body>
+</html>
