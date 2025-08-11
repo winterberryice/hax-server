@@ -1,7 +1,7 @@
 import http from 'http';
 import fs from 'fs';
 import url from 'url';
-import { start, stop, submitToken, getRoomState } from './haxball.mjs';
+import { start, stop, getRoomState } from './haxball.mjs';
 
 const PORT = process.env.PORT || 8080;
 
@@ -33,14 +33,21 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(getRoomState()));
     } else if (pathname === '/start' && req.method === 'POST') {
-        try {
-            await start();
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ message: "Room starting process initiated." }));
-        } catch (error) {
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ message: "Failed to start room.", error: error.message }));
-        }
+        let body = '';
+        req.on('data', chunk => {
+            body += chunk.toString();
+        });
+        req.on('end', async () => {
+            try {
+                const { token } = JSON.parse(body);
+                await start(token);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ message: "Room starting process initiated." }));
+            } catch (error) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ message: "Failed to start room.", error: error.message }));
+            }
+        });
     } else if (pathname === '/stop' && req.method === 'POST') {
         try {
             await stop();
@@ -50,27 +57,6 @@ const server = http.createServer(async (req, res) => {
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ message: "Failed to stop room.", error: error.message }));
         }
-    } else if (pathname === '/submit-token' && req.method === 'POST') {
-        let body = '';
-        req.on('data', chunk => {
-            body += chunk.toString();
-        });
-        req.on('end', async () => {
-            try {
-                const { token } = JSON.parse(body);
-                if (token) {
-                    await submitToken(token);
-                    res.writeHead(200, { 'Content-Type': 'application/json' });
-                    res.end(JSON.stringify({ message: "Token submitted successfully." }));
-                } else {
-                    res.writeHead(400, { 'Content-Type': 'application/json' });
-                    res.end(JSON.stringify({ message: "Token is missing." }));
-                }
-            } catch (error) {
-                res.writeHead(500, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ message: "Failed to submit token.", error: error.message }));
-            }
-        });
     } else {
         res.writeHead(404, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ message: "Not Found" }));
