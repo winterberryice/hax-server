@@ -6,16 +6,16 @@
     <title>Haxball Admin</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; padding: 1em; max-width: 800px; margin: 0 auto; }
-        h1, h2 { color: #333; }
-        #controls button { font-size: 1em; padding: 0.5em 1em; margin-right: 0.5em; cursor: pointer; }
-        #controls button:disabled { cursor: not-allowed; opacity: 0.6; }
-        #status { background-color: #f4f4f4; padding: 1em; border-radius: 5px; }
+        h1, h2, h3 { color: #333; }
+        button { font-size: 1em; padding: 0.5em 1em; margin-right: 0.5em; cursor: pointer; }
+        button:disabled { cursor: not-allowed; opacity: 0.6; }
+        #status { background-color: #f4f4f4; padding: 1em; border-radius: 5px; margin-bottom: 1.5em; }
         #room-link { color: #007bff; }
-        #captcha-section { display: none; margin-top: 1.5em; padding: 1em; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9; }
-        #captcha-section h3 { margin-top: 0; }
-        #token-input { width: 100%; box-sizing: border-box; padding: 0.5em; margin-top: 0.5em; }
-        #captcha-iframe-container { margin-top: 1em; }
-        iframe { border: 1px solid #ccc; }
+        #main-controls { margin-bottom: 1.5em; }
+        #captcha-area { border: 1px solid #ddd; border-radius: 5px; padding: 1em; background-color: #f9f9f9; }
+        #token-input { width: 100%; box-sizing: border-box; padding: 0.5em; margin-top: 0.5em; min-height: 80px; }
+        #captcha-iframe { width: 304px; height: 78px; border: 1px solid #ccc; }
+        .hidden { display: none; }
     </style>
 </head>
 <body>
@@ -27,26 +27,26 @@
         <p><strong>Room URL:</strong> <a id="room-link" href="#" target="_blank" rel="noopener noreferrer">N/A</a></p>
     </div>
 
-    <div id="controls" style="margin-top: 1.5em;">
+    <div id="main-controls">
         <h2>Controls</h2>
         <button id="start-btn">Start Room</button>
         <button id="stop-btn">Stop Room</button>
     </div>
 
-    <div id="captcha-section">
-        <h3>Captcha Required</h3>
-        <p>A captcha must be solved to create the room. Haxball uses reCAPTCHA v2.</p>
-        <ol>
-            <li>Open the captcha page by clicking <a id="captcha-external-link" href="#" target="_blank" rel="noopener noreferrer">this link</a>.</li>
-            <li>Solve the captcha there.</li>
-            <li>After solving, you'll get a long text string (the token).</li>
-            <li>Copy the token and paste it into the text area below.</li>
-            <li>Click "Submit Token".</li>
-        </ol>
+    <div id="captcha-area">
+        <h3>Room Creation Token</h3>
+        <p>A token is required to create a room. Click the button below to solve a CAPTCHA and get a token.</p>
+        <button id="get-captcha-btn">Get / Refresh CAPTCHA</button>
 
-        <label for="token-input"><b>Paste Token Here:</b></label><br>
-        <textarea id="token-input" rows="5" cols="50" placeholder="Paste the long token string here..."></textarea><br>
-        <button id="submit-token-btn" style="margin-top: 0.5em;">Submit Token</button>
+        <div id="captcha-container" class="hidden" style="margin-top: 1em;">
+            <iframe id="captcha-iframe"></iframe>
+            <p>Once solved, the token should appear below automatically. If not, please copy it from the captcha window.</p>
+        </div>
+
+        <div style="margin-top: 1em;">
+            <label for="token-input"><b>reCAPTCHA Token:</b></label><br>
+            <textarea id="token-input" placeholder="Solve the CAPTCHA to get a token..."></textarea>
+        </div>
     </div>
 
     <script>
@@ -54,12 +54,13 @@
         const roomLinkEl = document.getElementById('room-link');
         const startBtn = document.getElementById('start-btn');
         const stopBtn = document.getElementById('stop-btn');
-        const captchaSection = document.getElementById('captcha-section');
-        const captchaExternalLink = document.getElementById('captcha-external-link');
+        const getCaptchaBtn = document.getElementById('get-captcha-btn');
+        const captchaContainer = document.getElementById('captcha-container');
+        const captchaIframe = document.getElementById('captcha-iframe');
         const tokenInput = document.getElementById('token-input');
-        const submitTokenBtn = document.getElementById('submit-token-btn');
 
         const API_BASE_URL = ''; // Current origin
+        const HAXBALL_TOKEN_URL = 'https://www.haxball.com/headlesstoken';
 
         async function updateStatus() {
             try {
@@ -78,20 +79,12 @@
                     roomLinkEl.textContent = 'N/A';
                 }
 
-                if (state.status === 'waiting_for_captcha' && state.captcha_info && state.captcha_info.sitekey) {
-                    captchaSection.style.display = 'block';
-                    const sitekey = state.captcha_info.sitekey;
-                    // Construct a URL to a simple page that ONLY has the reCAPTCHA challenge.
-                    // This is more reliable than an iframe for user interaction.
-                    const captchaUrl = `https://www.google.com/recaptcha/api/fallback?k=${sitekey}`;
-                    captchaExternalLink.href = captchaUrl;
-                } else {
-                    captchaSection.style.display = 'none';
-                }
-
+                // Room can only be started if it's stopped.
                 startBtn.disabled = state.status !== 'stopped';
-                stopBtn.disabled = state.status !== 'running';
-                submitTokenBtn.disabled = state.status !== 'waiting_for_captcha';
+                // Stop button should be active if the room is running or in the process of starting.
+                stopBtn.disabled = state.status === 'stopped';
+                // Captcha can be fetched only when the room is stopped.
+                getCaptchaBtn.disabled = state.status !== 'stopped';
 
             } catch (error) {
                 statusMessageEl.textContent = 'Error connecting to server. Is it running?';
@@ -99,6 +92,7 @@
                 console.error('Error fetching status:', error);
                 startBtn.disabled = true;
                 stopBtn.disabled = true;
+                getCaptchaBtn.disabled = true;
             }
         }
 
@@ -110,34 +104,52 @@
                     body: body ? JSON.stringify(body) : null
                 };
                 const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+                const responseData = await response.json();
                 if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.message || 'Request failed');
+                    throw new Error(responseData.message || 'Request failed');
                 }
-                await updateStatus(); // Refresh status immediately after action
+                await updateStatus();
             } catch (error) {
                 alert(`An error occurred: ${error.message}`);
                 console.error(`Error with ${endpoint}:`, error);
-                await updateStatus(); // Refresh status to show latest state from server
+                await updateStatus();
             }
         }
 
-        startBtn.addEventListener('click', () => postAction('/start'));
-        stopBtn.addEventListener('click', () => postAction('/stop'));
-
-        submitTokenBtn.addEventListener('click', () => {
-            const token = tokenInput.value.trim();
-            if (!token) {
-                alert('Please paste the token before submitting.');
-                return;
-            }
-            postAction('/submit-token', { token });
-            tokenInput.value = '';
+        getCaptchaBtn.addEventListener('click', () => {
+            captchaContainer.classList.remove('hidden');
+            // Add a timestamp to the URL to force a refresh, preventing cached/solved captchas
+            captchaIframe.src = `${HAXBALL_TOKEN_URL}?_=${Date.now()}`;
         });
 
-        // Fetch status every 3 seconds to keep the UI up-to-date
+        startBtn.addEventListener('click', () => {
+            const token = tokenInput.value.trim();
+            if (!token) {
+                alert('Please get a CAPTCHA token first.');
+                return;
+            }
+            postAction('/start', { token });
+        });
+
+        stopBtn.addEventListener('click', () => postAction('/stop'));
+
+        // Listen for messages from the iframe for semi-automatic token grabbing
+        window.addEventListener('message', (event) => {
+            // IMPORTANT: Check the origin of the message for security
+            if (event.origin !== "https://www.haxball.com") {
+                return;
+            }
+
+            // The haxball token page sends the token as a string in the data property.
+            if (typeof event.data === 'string' && event.data.length > 50) { // Tokens are long strings
+                console.log('Received token from iframe:', event.data);
+                tokenInput.value = event.data;
+            }
+        });
+
+        // Fetch status every 3 seconds
         setInterval(updateStatus, 3000);
-        // Initial status update on page load
+        // Initial status update
         document.addEventListener('DOMContentLoaded', updateStatus);
     </script>
 </body>

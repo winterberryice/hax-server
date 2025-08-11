@@ -4,14 +4,11 @@ import { chromium } from "playwright";
 const wsPath = process.env.WS_PATH;
 
 let state = {
-    status: 'stopped', // Can be: stopped, starting, waiting_for_captcha, running, stopping, error
+    status: 'stopped', // Can be: stopped, starting, running, stopping, error
     status_message: 'Room is stopped.',
     room_url: null,
-    captcha_info: null, // To hold captcha details like sitekey
     browser: null,
     page: null,
-    token_promise: null,
-    token_resolver: null,
 };
 
 function updateState(newState) {
@@ -24,7 +21,6 @@ export function getRoomState() {
         status: state.status,
         status_message: state.status_message,
         room_url: state.room_url,
-        captcha_info: state.captcha_info,
     };
 }
 
@@ -69,7 +65,10 @@ async function initializeRoom(token = null) {
     updateState({ status_message: 'Room script executed. Waiting for room link...' });
 }
 
-export async function start() {
+export async function start(token) {
+    if (!token) {
+        throw new Error('A reCAPTCHA token is required to start the room.');
+    }
     if (state.status !== 'stopped') {
         throw new Error(`Cannot start room when status is ${state.status}.`);
     }
@@ -98,30 +97,7 @@ export async function start() {
 
         await page.waitForFunction(() => window.HBInit, null, { timeout: 30000 });
 
-        const captchaElement = await page.locator('.g-recaptcha').all();
-        if (captchaElement.length > 0) {
-            updateState({ status_message: 'Captcha challenge detected.' });
-            const sitekey = await captchaElement[0].getAttribute('data-sitekey');
-
-            updateState({
-                status: 'waiting_for_captcha',
-                status_message: 'Waiting for user to solve captcha.',
-                captcha_info: { sitekey }
-            });
-
-            // Create a promise that will be resolved when the token is submitted
-            const tokenPromise = new Promise((resolve) => {
-                state.token_resolver = resolve;
-            });
-
-            const token = await tokenPromise;
-            updateState({ status_message: 'Token received. Initializing room with token...' });
-            await initializeRoom(token);
-
-        } else {
-            updateState({ status_message: 'No captcha detected. Initializing room...' });
-            await initializeRoom();
-        }
+        await initializeRoom(token);
 
     } catch (error) {
         console.error("❌ An error occurred during startup:", error);
@@ -158,17 +134,7 @@ export async function stop(reason = 'Room stopped by admin.') {
         status: 'stopped',
         status_message: reason,
         room_url: null,
-        captcha_info: null,
         browser: null,
         page: null,
-        token_resolver: null,
     });
-}
-
-export async function submitToken(token) {
-    if (state.status !== 'waiting_for_captcha' || !state.token_resolver) {
-        throw new Error('Not in a state to accept a token.');
-    }
-    state.token_resolver(token);
-    updateState({ token_resolver: null }); // Clear resolver
 }
