@@ -11,6 +11,8 @@ services:
     # This should match the WS_PATH used by your playwright-server.
     environment:
       - WS_PATH=${WS_PATH}
+    ports:
+      - "8080:8080"
 
 networks:
   my-proxy-net:

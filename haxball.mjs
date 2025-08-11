@@ -1,98 +1,174 @@
 import { chromium } from "playwright";
 
 // The WebSocket endpoint for the existing Playwright server.
-// 'playwright-server' is the service name in the docker network.
 const wsPath = process.env.WS_PATH;
 
-if (!wsPath) {
-  console.error("❌ ERROR: The WS_PATH environment variable is not set.");
-  console.error(
-    '   Please set it to the WebSocket path used by your Playwright server (e.g., "/" or "/my-path").'
-  );
-  process.exit(1);
+let state = {
+    status: 'stopped', // Can be: stopped, starting, waiting_for_captcha, running, stopping, error
+    status_message: 'Room is stopped.',
+    room_url: null,
+    captcha_info: null, // To hold captcha details like sitekey
+    browser: null,
+    page: null,
+    token_promise: null,
+    token_resolver: null,
+};
+
+function updateState(newState) {
+    state = { ...state, ...newState };
+    console.log(`[State Update] => ${state.status_message}`);
 }
 
-// // Ensure the path starts with a slash
-// const fullWsPath = wsPath.startsWith("/") ? wsPath : `/${wsPath}`;
-// const wsEndpoint = `ws://playwright-server:53333${fullWsPath}`;
+export function getRoomState() {
+    return {
+        status: state.status,
+        status_message: state.status_message,
+        room_url: state.room_url,
+        captcha_info: state.captcha_info,
+    };
+}
 
-console.log("Haxball Server starting...");
+async function initializeRoom(token = null) {
+    if (!state.page) return;
 
-(async () => {
-  try {
-    console.log(`Attempting to connect to Playwright server`);
-
-    // Connect to the existing browser server.
-    const browser = await chromium.connect(wsPath);
-
-    console.log("✅ Successfully connected to Playwright server.");
-
-    const context = await browser.newContext();
-    const page = await context.newPage();
-
-    // Log browser console messages to the Node.js console for debugging
-    page.on("console", (msg) => console.log(`[Browser]: ${msg.text()}`));
-
-    console.log("Navigating to Haxball headless URL...");
-    await page.goto("https://html5.haxball.com/headless");
-    console.log("✅ Navigation complete.");
-
-    // Wait until the HBInit function is loaded on the page
-    await page.waitForFunction(() => window.HBInit, null, { timeout: 30000 });
-    console.log("✅ HBInit function is now available.");
-
-    // Expose a function from Node.js to the browser, so the browser can send the room link back to us.
-    await page.exposeFunction("onRoomLinkSet", (url) => {
-      console.log("==================================================");
-      console.log(`🎉 Haxball Room URL: ${url}`);
-      console.log("==================================================");
+    await state.page.exposeFunction("onRoomLinkSet", (url) => {
+        console.log("==================================================");
+        console.log(`🎉 Haxball Room URL: ${url}`);
+        console.log("==================================================");
+        updateState({ room_url: url, status: 'running', status_message: 'Room is running successfully!' });
     });
 
-    console.log("Initializing Haxball room...");
-    // This code block is executed in the browser's context
-    await page.evaluate(() => {
-      const room = HBInit({
+    updateState({ status_message: 'Initializing Haxball room...' });
+
+    const roomConfig = {
         roomName: "Jules's Awesome Haxball Room",
         maxPlayers: 12,
         public: false,
-        noPlayer: true, // Recommended for headless hosts
-      });
+        noPlayer: true,
+        token: token, // Pass the token here
+    };
 
-      room.setDefaultStadium("Classic");
-      room.setScoreLimit(5);
-      room.setTimeLimit(5);
+    await state.page.evaluate((config) => {
+        const room = window.HBInit(config);
+        room.setDefaultStadium("Classic");
+        room.setScoreLimit(5);
+        room.setTimeLimit(5);
+        room.onRoomLink = (url) => window.onRoomLinkSet(url);
 
-      // Set the onRoomLink callback to call the function we exposed from Node.js
-      room.onRoomLink = (url) => {
-        window.onRoomLinkSet(url);
-      };
+        // Optional: Admin management logic
+        function updateAdmins() {
+            const players = room.getPlayerList();
+            if (players.length > 0 && !players.some(p => p.admin)) {
+                room.setPlayerAdmin(players[0].id, true);
+            }
+        }
+        room.onPlayerJoin = updateAdmins;
+        room.onPlayerLeave = updateAdmins;
+    }, roomConfig);
 
-      function updateAdmins() {
-        // Get all players
-        var players = room.getPlayerList();
-        if (players.length == 0) return; // No players left, do nothing.
-        if (players.find((player) => player.admin) != null) return; // There's an admin left so do nothing.
-        room.setPlayerAdmin(players[0].id, true); // Give admin to the first non admin player in the list
-      }
+    updateState({ status_message: 'Room script executed. Waiting for room link...' });
+}
 
-      room.onPlayerJoin = function (player) {
-        updateAdmins();
-      };
+export async function start() {
+    if (state.status !== 'stopped') {
+        throw new Error(`Cannot start room when status is ${state.status}.`);
+    }
 
-      room.onPlayerLeave = function (player) {
-        updateAdmins();
-      };
+    if (!wsPath) {
+        const errorMsg = "FATAL: The WS_PATH environment variable is not set.";
+        updateState({ status: 'error', status_message: errorMsg });
+        throw new Error(errorMsg);
+    }
+
+    updateState({ status: 'starting', status_message: 'Connecting to Playwright server...' });
+
+    try {
+        const browser = await chromium.connect(wsPath, { timeout: 20000 });
+        updateState({ browser, status_message: 'Connected to Playwright. Opening new page...' });
+
+        const context = await browser.newContext();
+        const page = await context.newPage();
+        updateState({ page, status_message: 'Navigating to Haxball headless URL...' });
+
+        page.on('close', () => stop('Page was closed.'));
+        page.on("console", (msg) => console.log(`[Browser]: ${msg.text()}`));
+
+        await page.goto("https://html5.haxball.com/headless", { timeout: 30000 });
+        updateState({ status_message: 'Waiting for Haxball to load...' });
+
+        await page.waitForFunction(() => window.HBInit, null, { timeout: 30000 });
+
+        const captchaElement = await page.locator('.g-recaptcha').all();
+        if (captchaElement.length > 0) {
+            updateState({ status_message: 'Captcha challenge detected.' });
+            const sitekey = await captchaElement[0].getAttribute('data-sitekey');
+
+            updateState({
+                status: 'waiting_for_captcha',
+                status_message: 'Waiting for user to solve captcha.',
+                captcha_info: { sitekey }
+            });
+
+            // Create a promise that will be resolved when the token is submitted
+            const tokenPromise = new Promise((resolve) => {
+                state.token_resolver = resolve;
+            });
+
+            const token = await tokenPromise;
+            updateState({ status_message: 'Token received. Initializing room with token...' });
+            await initializeRoom(token);
+
+        } else {
+            updateState({ status_message: 'No captcha detected. Initializing room...' });
+            await initializeRoom();
+        }
+
+    } catch (error) {
+        console.error("❌ An error occurred during startup:", error);
+        await stop(`Error during startup: ${error.message}`);
+        throw error; // Re-throw to inform the caller
+    }
+}
+
+export async function stop(reason = 'Room stopped by admin.') {
+    if (state.status === 'stopped') return;
+
+    updateState({ status: 'stopping', status_message: `Stopping room: ${reason}` });
+
+    if (state.page && !state.page.isClosed()) {
+        try {
+            await state.page.close();
+        } catch (e) {
+            console.error("Ignoring error while closing page:", e.message);
+        }
+    }
+
+    // We connected to an existing browser server, so we should not close the browser itself.
+    // We just disconnect from it.
+    if (state.browser && state.browser.isConnected()) {
+        try {
+            await state.browser.disconnect();
+        } catch (e) {
+            console.error("Ignoring error while disconnecting browser:", e.message);
+        }
+    }
+
+    // Reset state
+    updateState({
+        status: 'stopped',
+        status_message: reason,
+        room_url: null,
+        captcha_info: null,
+        browser: null,
+        page: null,
+        token_resolver: null,
     });
-    console.log("✅ Room initialization script sent.");
-    console.log(
-      "🕒 Waiting for room link... (This may take a moment for the recaptcha to solve)."
-    );
+}
 
-    // The script will stay running because the Playwright connection is active.
-    // If the connection is lost, the script will exit.
-  } catch (error) {
-    console.error("❌ An error occurred during Haxball server setup:");
-    console.error(error);
-    process.exit(1);
-  }
-})();
+export async function submitToken(token) {
+    if (state.status !== 'waiting_for_captcha' || !state.token_resolver) {
+        throw new Error('Not in a state to accept a token.');
+    }
+    state.token_resolver(token);
+    updateState({ token_resolver: null }); // Clear resolver
+}
