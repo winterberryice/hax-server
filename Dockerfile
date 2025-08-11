@@ -1,5 +1,5 @@
 # Use a recent Node.js LTS version
-FROM node:20-bookworm
+FROM node:20-alpine
 
 # Set the working directory inside the container
 WORKDIR /app
