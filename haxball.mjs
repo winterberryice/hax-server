@@ -11,9 +11,18 @@ let state = {
     page: null,
 };
 
+let onStateUpdate = () => {}; // Placeholder for the callback
+
+export function setStateUpdateCallback(callback) {
+    if (typeof callback === 'function') {
+        onStateUpdate = callback;
+    }
+}
+
 function updateState(newState) {
     state = { ...state, ...newState };
     console.log(`[State Update] => ${state.status_message}`);
+    onStateUpdate();
 }
 
 export function getRoomState() {

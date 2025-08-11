@@ -1,18 +1,33 @@
 import http from 'http';
 import fs from 'fs';
 import url from 'url';
-import { start, stop, getRoomState } from './haxball.mjs';
+import { start, stop, getRoomState, setStateUpdateCallback } from './haxball.mjs';
 
 const PORT = process.env.PORT || 8080;
+
+// Array to hold connected SSE clients
+let clients = [];
+
+// Function to send the current state to all connected clients
+function sendStateToAllClients() {
+    const currentState = getRoomState();
+    const data = `data: ${JSON.stringify(currentState)}\n\n`;
+    clients.forEach(client => client.res.write(data));
+}
+
+// Register the callback in the haxball module
+setStateUpdateCallback(sendStateToAllClients);
 
 const server = http.createServer(async (req, res) => {
     const parsedUrl = url.parse(req.url, true);
     const pathname = parsedUrl.pathname;
 
+    // Standard headers for CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
+    // Pre-flight request
     if (req.method === 'OPTIONS') {
         res.writeHead(204);
         res.end();
@@ -24,45 +39,61 @@ const server = http.createServer(async (req, res) => {
             if (err) {
                 res.writeHead(500);
                 res.end('Error loading admin.html');
-                return;
+            } else {
+                res.writeHead(200, { 'Content-Type': 'text/html' });
+                res.end(data);
             }
-            res.writeHead(200, { 'Content-Type': 'text/html' });
-            res.end(data);
         });
-    } else if (pathname === '/status' && req.method === 'GET') {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(getRoomState()));
+    } else if (pathname === '/events') {
+        // SSE endpoint
+        res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+        });
+
+        const clientId = Date.now();
+        const newClient = { id: clientId, res };
+        clients.push(newClient);
+        console.log(`Client ${clientId} connected`);
+
+        // Immediately send the current state to the new client
+        res.write(`data: ${JSON.stringify(getRoomState())}\n\n`);
+
+        req.on('close', () => {
+            clients = clients.filter(c => c.id !== clientId);
+            console.log(`Client ${clientId} disconnected`);
+        });
     } else if (pathname === '/start' && req.method === 'POST') {
         let body = '';
-        req.on('data', chunk => {
-            body += chunk.toString();
-        });
+        req.on('data', chunk => { body += chunk.toString(); });
         req.on('end', async () => {
             try {
                 const { token } = JSON.parse(body);
                 await start(token);
                 res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ message: "Room starting process initiated." }));
+                res.end(JSON.stringify({ message: "Room start initiated." }));
             } catch (error) {
                 res.writeHead(500, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ message: "Failed to start room.", error: error.message }));
+                res.end(JSON.stringify({ message: `Failed to start room: ${error.message}` }));
             }
         });
     } else if (pathname === '/stop' && req.method === 'POST') {
         try {
             await stop();
             res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ message: "Room stopping process initiated." }));
+            res.end(JSON.stringify({ message: "Room stop initiated." }));
         } catch (error) {
             res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ message: "Failed to stop room.", error: error.message }));
+            res.end(JSON.stringify({ message: `Failed to stop room: ${error.message}` }));
         }
     } else {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ message: "Not Found" }));
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('Not Found');
     }
 });
 
 server.listen(PORT, () => {
-    console.log(`Admin server running on http://localhost:${PORT}`);
+    console.log(`Server running at http://localhost:${PORT}/`);
+    console.log(`SSE endpoint at http://localhost:${PORT}/events`);
 });
