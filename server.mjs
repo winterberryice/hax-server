@@ -19,6 +19,26 @@ function sendStateToAllClients() {
 setStateUpdateCallback(sendStateToAllClients);
 
 const server = http.createServer(async (req, res) => {
+    // Simple Basic Authentication
+    const { USERNAME, PASSWORD } = process.env;
+    if (USERNAME && PASSWORD) {
+        const authHeader = req.headers['authorization'];
+        if (!authHeader || !authHeader.startsWith('Basic ')) {
+            res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Restricted Area"' });
+            res.end('Authentication required.');
+            return;
+        }
+
+        const credentials = Buffer.from(authHeader.split(' ')[1], 'base64').toString();
+        const [username, password] = credentials.split(':');
+
+        if (username !== USERNAME || password !== PASSWORD) {
+            res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Restricted Area"' });
+            res.end('Invalid credentials.');
+            return;
+        }
+    }
+
     const parsedUrl = url.parse(req.url, true);
     const pathname = parsedUrl.pathname;
 
