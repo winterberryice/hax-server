@@ -14,6 +14,8 @@ services:
     # This should match the WS_PATH used by your playwright-server.
     environment:
       - WS_PATH=${WS_PATH}
+      - USERNAME=${USERNAME}
+      - PASSWORD=${PASSWORD}
     ports:
       - "5010:8080"
 
