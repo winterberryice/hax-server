@@ -1,0 +1,19 @@
+name: deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger redeploy
+        uses: fjogeleit/http-request-action@v1
+        with:
+          url: ${{ secrets.WEBHOOK_URL }}
+          method: "POST"
+          username: ${{ secrets.WEBHOOK_USERNAME }}
+          password: ${{ secrets.WEBHOOK_PASSWORD }}
+          data: '[{ "Name": "hax-server", "Version": "0.1.0" }]'
