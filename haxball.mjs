@@ -88,11 +88,10 @@ export async function start(token) {
         throw new Error(errorMsg);
     }
 
-    console.log(`Attempting to connect to Playwright server at: ${wsPath}`);
     updateState({ status: 'starting', status_message: 'Connecting to Playwright server...' });
 
     try {
-        const browser = await chromium.connect({ wsEndpoint: wsPath, timeout: 20000 });
+        const browser = await chromium.connect(wsPath, { timeout: 20000 });
         updateState({ browser, status_message: 'Connected to Playwright. Opening new page...' });
 
         const context = await browser.newContext();
