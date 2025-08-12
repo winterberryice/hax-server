@@ -14,7 +14,6 @@
         #main-controls { margin-bottom: 1.5em; }
         #captcha-area { border: 1px solid #ddd; border-radius: 5px; padding: 1em; background-color: #f9f9f9; }
         #token-input { width: 100%; box-sizing: border-box; padding: 0.5em; margin-top: 0.5em; min-height: 80px; }
-        #captcha-iframe { width: 304px; height: 78px; border: 1px solid #ccc; }
         .hidden { display: none; }
     </style>
 </head>
@@ -35,17 +34,14 @@
 
     <div id="captcha-area">
         <h3>Room Creation Token</h3>
-        <p>A token is required to create a room. Click the button below to solve a CAPTCHA and get a token.</p>
-        <button id="get-captcha-btn">Get / Refresh CAPTCHA</button>
-
-        <div id="captcha-container" class="hidden" style="margin-top: 1em;">
-            <iframe id="captcha-iframe"></iframe>
-            <p>Once solved, the token should appear below automatically. If not, please copy it from the captcha window.</p>
-        </div>
+        <p>A token is required to create a room. Click the link below, solve the CAPTCHA in a new tab, then copy the token and paste it here.</p>
+        <a href="https://www.haxball.com/headlesstoken" target="_blank" rel="noopener noreferrer" style="text-decoration: none;">
+            <button type="button">Open CAPTCHA Page</button>
+        </a>
 
         <div style="margin-top: 1em;">
             <label for="token-input"><b>reCAPTCHA Token:</b></label><br>
-            <textarea id="token-input" placeholder="Solve the CAPTCHA to get a token..."></textarea>
+            <textarea id="token-input" placeholder="Paste your token here..."></textarea>
         </div>
     </div>
 
@@ -54,13 +50,9 @@
         const roomLinkEl = document.getElementById('room-link');
         const startBtn = document.getElementById('start-btn');
         const stopBtn = document.getElementById('stop-btn');
-        const getCaptchaBtn = document.getElementById('get-captcha-btn');
-        const captchaContainer = document.getElementById('captcha-container');
-        const captchaIframe = document.getElementById('captcha-iframe');
         const tokenInput = document.getElementById('token-input');
 
         const API_BASE_URL = ''; // Current origin
-        const HAXBALL_TOKEN_URL = 'https://www.haxball.com/headlesstoken';
 
         function updateUI(state) {
             statusMessageEl.textContent = state.status_message || 'N/A';
@@ -76,7 +68,6 @@
 
             startBtn.disabled = state.status !== 'stopped';
             stopBtn.disabled = state.status === 'stopped' || state.status === 'stopping';
-            getCaptchaBtn.disabled = state.status !== 'stopped';
         }
 
         async function postAction(endpoint, body = null) {
@@ -98,11 +89,6 @@
             }
         }
 
-        getCaptchaBtn.addEventListener('click', () => {
-            captchaContainer.classList.remove('hidden');
-            captchaIframe.src = `${HAXBALL_TOKEN_URL}?_=${Date.now()}`;
-        });
-
         startBtn.addEventListener('click', () => {
             const token = tokenInput.value.trim();
             if (!token) {
@@ -113,14 +99,6 @@
         });
 
         stopBtn.addEventListener('click', () => postAction('/stop'));
-
-        window.addEventListener('message', (event) => {
-            if (event.origin !== "https://www.haxball.com") return;
-            if (typeof event.data === 'string' && event.data.length > 50) {
-                console.log('Received token from iframe:', event.data);
-                tokenInput.value = event.data;
-            }
-        });
 
         // Initialize SSE connection
         const eventSource = new EventSource('/events');
@@ -136,7 +114,6 @@
             statusMessageEl.style.color = 'red';
             startBtn.disabled = true;
             stopBtn.disabled = true;
-            getCaptchaBtn.disabled = true;
         };
     </script>
 </body>
