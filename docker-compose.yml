@@ -2,7 +2,10 @@ version: "3.8" # Specifying a version is good practice
 
 services:
   haxball-server:
-    build: .
+    image: "register.kacpersledz.com/hax-server:0.1.0"
+    build:
+      context: .
+      dockerfile: Dockerfile
     restart: unless-stopped
     # Attach this service to the external network.
     networks:
