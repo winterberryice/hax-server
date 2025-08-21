@@ -90,7 +90,14 @@
         }
 
         startBtn.addEventListener('click', () => {
-            const token = tokenInput.value.trim();
+            let token = tokenInput.value.trim();
+
+            // Check for a token within quotes and extract it
+            const quoteMatch = token.match(/"(.*?)"/);
+            if (quoteMatch && quoteMatch[1]) {
+                token = quoteMatch[1];
+            }
+
             if (!token) {
                 alert('Please provide a reCAPTCHA token.');
                 return;
