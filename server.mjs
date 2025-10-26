@@ -19,6 +19,22 @@ function sendStateToAllClients() {
 setStateUpdateCallback(sendStateToAllClients);
 
 const server = http.createServer(async (req, res) => {
+    const parsedUrl = url.parse(req.url, true);
+    const pathname = parsedUrl.pathname;
+
+    // Unprotected route for joining the room
+    if (pathname === '/join') {
+        const { status, room_url } = getRoomState();
+        if (status === 'running' && room_url) {
+            res.writeHead(302, { 'Location': room_url });
+            res.end();
+        } else {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ message: "Room not available." }));
+        }
+        return;
+    }
+
     // Simple Basic Authentication
     const { USERNAME, PASSWORD } = process.env;
     if (USERNAME && PASSWORD) {
@@ -38,9 +54,6 @@ const server = http.createServer(async (req, res) => {
             return;
         }
     }
-
-    const parsedUrl = url.parse(req.url, true);
-    const pathname = parsedUrl.pathname;
 
     // Standard headers for CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
