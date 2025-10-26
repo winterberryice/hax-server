@@ -55,9 +55,9 @@ async function initializeRoom(token = null) {
 
     await state.page.evaluate((config) => {
         const room = window.HBInit(config);
-        room.setDefaultStadium("Classic");
-        room.setScoreLimit(5);
-        room.setTimeLimit(5);
+        room.setDefaultStadium("Rounded");
+        room.setScoreLimit(0);
+        room.setTimeLimit(3);
         room.onRoomLink = (url) => window.onRoomLinkSet(url);
 
         // Optional: Admin management logic
