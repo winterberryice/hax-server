@@ -135,8 +135,7 @@ const server = http.createServer(async (req, res) => {
                 const formData = new URLSearchParams();
                 formData.append('g-recaptcha-response', captchaResponse);
 
-                const fetch = await import('node-fetch');
-                const haxballResponse = await fetch.default(haxballApiUrl, {
+                const haxballResponse = await fetch(haxballApiUrl, {
                     method: 'POST',
                     body: formData,
                     headers: {

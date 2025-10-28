@@ -14,8 +14,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "node-fetch": "^3.3.2",
-    "playwright": "1.48.2",
-    "pm2": "^6.0.13"
+    "playwright": "1.48.2"
   }
 }
