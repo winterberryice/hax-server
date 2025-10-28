@@ -34,14 +34,16 @@
 
     <div id="captcha-area">
         <h3>Room Creation Token</h3>
-        <p>A token is required to create a room. Click the link below, solve the CAPTCHA in a new tab, then copy the token and paste it here.</p>
-        <a href="https://www.haxball.com/headlesstoken" target="_blank" rel="noopener noreferrer" style="text-decoration: none;">
-            <button type="button">Open CAPTCHA Page</button>
-        </a>
+        <p>Solve the CAPTCHA below. Once the token appears, select and copy it, then click the "Paste" button.</p>
+
+        <iframe src="https://www.haxball.com/headlesstoken" style="width: 320px; height: 160px; border: 1px solid #ccc; border-radius: 4px;"></iframe>
 
         <div style="margin-top: 1em;">
-            <label for="token-input"><b>reCAPTCHA Token:</b></label><br>
-            <textarea id="token-input" placeholder="Paste your token here..."></textarea>
+            <label for="token-input"><b>Haxball Token:</b></label><br>
+            <div style="display: flex; align-items: center; gap: 0.5em;">
+                <textarea id="token-input" placeholder="Paste token here or use the button..." style="flex-grow: 1;"></textarea>
+                <button type="button" id="paste-btn" title="Paste from Clipboard">Paste</button>
+            </div>
         </div>
     </div>
 
@@ -51,6 +53,7 @@
         const startBtn = document.getElementById('start-btn');
         const stopBtn = document.getElementById('stop-btn');
         const tokenInput = document.getElementById('token-input');
+        const pasteBtn = document.getElementById('paste-btn');
 
         const API_BASE_URL = ''; // Current origin
 
@@ -89,6 +92,20 @@
             }
         }
 
+        pasteBtn.addEventListener('click', async () => {
+            try {
+                const text = await navigator.clipboard.readText();
+                if (text) {
+                    tokenInput.value = text;
+                } else {
+                    alert('Clipboard is empty.');
+                }
+            } catch (err) {
+                console.error('Failed to read clipboard contents: ', err);
+                alert('Failed to read from clipboard. Please paste manually.');
+            }
+        });
+
         startBtn.addEventListener('click', () => {
             let token = tokenInput.value.trim();
 
@@ -99,7 +116,7 @@
             }
 
             if (!token) {
-                alert('Please provide a reCAPTCHA token.');
+                alert('Please provide a Haxball token.');
                 return;
             }
             postAction('/start', { token });
