@@ -41,7 +41,10 @@
 
         <div style="margin-top: 1em;">
             <label for="token-input"><b>reCAPTCHA Token:</b></label><br>
-            <textarea id="token-input" placeholder="Paste your token here..."></textarea>
+            <div style="display: flex; align-items: center; gap: 0.5em;">
+                <textarea id="token-input" placeholder="Paste your token here..." style="flex-grow: 1;"></textarea>
+                <button type="button" id="paste-btn" title="Paste from Clipboard">Paste</button>
+            </div>
         </div>
     </div>
 
@@ -51,6 +54,7 @@
         const startBtn = document.getElementById('start-btn');
         const stopBtn = document.getElementById('stop-btn');
         const tokenInput = document.getElementById('token-input');
+        const pasteBtn = document.getElementById('paste-btn');
 
         const API_BASE_URL = ''; // Current origin
 
@@ -88,6 +92,20 @@
                 console.error(`Error with ${endpoint}:`, error);
             }
         }
+
+        pasteBtn.addEventListener('click', async () => {
+            try {
+                const text = await navigator.clipboard.readText();
+                if (text) {
+                    tokenInput.value = text;
+                } else {
+                    alert('Clipboard is empty.');
+                }
+            } catch (err) {
+                console.error('Failed to read clipboard contents: ', err);
+                alert('Failed to read from clipboard. Please paste manually.');
+            }
+        });
 
         startBtn.addEventListener('click', () => {
             let token = tokenInput.value.trim();
