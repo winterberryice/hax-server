@@ -36,23 +36,37 @@
         <h3>Room Creation Token</h3>
         <p>A token is required to create a room. Click the link below, solve the CAPTCHA in a new tab, then copy the token and paste it here.</p>
         <a href="https://www.haxball.com/headlesstoken" target="_blank" rel="noopener noreferrer" style="text-decoration: none;">
-            <button type="button">Open CAPTCHA Page</button>
+            <button type="button">Open CAPTCHA Page (Manual Fallback)</button>
         </a>
 
         <div style="margin-top: 1em;">
-            <label for="token-input"><b>reCAPTCHA Token:</b></label><br>
-            <textarea id="token-input" placeholder="Paste your token here..."></textarea>
+            <label for="token-input"><b>Manual Haxball Token:</b></label><br>
+            <textarea id="token-input" placeholder="If automatic process fails, paste your token here..."></textarea>
         </div>
     </div>
 
+    <div id="auto-captcha-area" class="hidden" style="margin-top: 1.5em; border: 1px solid #ddd; border-radius: 5px; padding: 1em; background-color: #f9f9f9;">
+        <h3>Solve CAPTCHA to Start</h3>
+        <p>Please solve the CAPTCHA below. The token will be fetched automatically.</p>
+        <div id="g-recaptcha-container"></div>
+        <p id="auto-captcha-status" style="color: #666;"></p>
+    </div>
+
+
+    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
     <script>
         const statusMessageEl = document.getElementById('status-message');
         const roomLinkEl = document.getElementById('room-link');
         const startBtn = document.getElementById('start-btn');
         const stopBtn = document.getElementById('stop-btn');
         const tokenInput = document.getElementById('token-input');
+        const autoCaptchaArea = document.getElementById('auto-captcha-area');
+        const captchaContainer = document.getElementById('g-recaptcha-container');
+        const autoCaptchaStatus = document.getElementById('auto-captcha-status');
 
         const API_BASE_URL = ''; // Current origin
+        const RECAPTCHA_SITE_KEY = '6LfMLFIUAAAAAC54jquwTXtcGDc_dPbJm9WtRMSz';
+        let isCaptchaRendered = false;
 
         function updateUI(state) {
             statusMessageEl.textContent = state.status_message || 'N/A';
@@ -89,22 +103,68 @@
             }
         }
 
-        startBtn.addEventListener('click', () => {
-            let token = tokenInput.value.trim();
-
-            // Check for a token within quotes and extract it
-            const quoteMatch = token.match(/"(.*?)"/);
+        async function handleStart() {
+            let manualToken = tokenInput.value.trim();
+            const quoteMatch = manualToken.match(/"(.*?)"/);
             if (quoteMatch && quoteMatch[1]) {
-                token = quoteMatch[1];
+                manualToken = quoteMatch[1];
             }
 
-            if (!token) {
-                alert('Please provide a reCAPTCHA token.');
+            if (manualToken) {
+                // If a manual token exists, use it directly
+                autoCaptchaArea.classList.add('hidden');
+                postAction('/start', { token: manualToken });
                 return;
             }
-            postAction('/start', { token });
-        });
 
+            // If no manual token, show the auto CAPTCHA section
+            autoCaptchaArea.classList.remove('hidden');
+
+            // Render the captcha only once
+            if (!isCaptchaRendered) {
+                autoCaptchaStatus.textContent = 'Please solve the CAPTCHA.';
+                grecaptcha.render(captchaContainer, {
+                    'sitekey': RECAPTCHA_SITE_KEY,
+                    'callback': handleCaptchaSuccess,
+                });
+                isCaptchaRendered = true;
+            }
+        }
+
+        async function handleCaptchaSuccess(captchaResponse) {
+            autoCaptchaStatus.textContent = 'CAPTCHA solved. Fetching Haxball token...';
+            startBtn.disabled = true; // Disable button while processing
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/get-haxball-token`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ captchaResponse })
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.message || 'Failed to get token from server.');
+                }
+
+                autoCaptchaStatus.textContent = 'Token received! Starting room...';
+                await postAction('/start', { token: result.token });
+
+                // Hide the captcha area on success and reset
+                autoCaptchaArea.classList.add('hidden');
+                grecaptcha.reset();
+
+            } catch (error) {
+                console.error('Auto token process failed:', error);
+                autoCaptchaStatus.textContent = `Error: ${error.message}. Please use the manual fallback process.`;
+                alert(`Automatic token retrieval failed. Please copy the token manually.\n\nDetails: ${error.message}`);
+            } finally {
+                startBtn.disabled = getRoomState().status !== 'stopped'; // Re-enable based on actual state
+            }
+        }
+
+        startBtn.addEventListener('click', handleStart);
         stopBtn.addEventListener('click', () => postAction('/stop'));
 
         // Initialize SSE connection

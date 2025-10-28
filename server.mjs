@@ -120,6 +120,54 @@ const server = http.createServer(async (req, res) => {
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ message: `Failed to stop room: ${error.message}` }));
         }
+    } else if (pathname === '/get-haxball-token' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => { body += chunk.toString(); });
+        req.on('end', async () => {
+            try {
+                const { captchaResponse } = JSON.parse(body);
+                if (!captchaResponse) {
+                    throw new Error('No CAPTCHA response provided.');
+                }
+
+                // Forward the request to Haxball's API
+                const haxballApiUrl = 'https://www.haxball.com/rs/api/getheadlesstoken';
+                const formData = new URLSearchParams();
+                formData.append('g-recaptcha-response', captchaResponse);
+
+                const fetch = await import('node-fetch');
+                const haxballResponse = await fetch.default(haxballApiUrl, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                    }
+                });
+
+                const responseText = await haxballResponse.text();
+
+                if (!haxballResponse.ok || !responseText.includes('Token obtained:')) {
+                    throw new Error(`Haxball API rejected the request. Response: ${responseText}`);
+                }
+
+                // Extract the token (it's often quoted)
+                const tokenMatch = responseText.match(/"(.*?)"/);
+                const token = tokenMatch ? tokenMatch[1] : null;
+
+                if (!token) {
+                    throw new Error('Could not parse the token from Haxball response.');
+                }
+
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ token }));
+
+            } catch (error) {
+                console.error('Error in /get-haxball-token:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ message: error.message }));
+            }
+        });
     } else {
         res.writeHead(404, { 'Content-Type': 'text/plain' });
         res.end('Not Found');
