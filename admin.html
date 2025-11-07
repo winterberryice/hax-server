@@ -107,8 +107,23 @@
             }
         });
 
-        startBtn.addEventListener('click', () => {
+        startBtn.addEventListener('click', async () => {
             let token = tokenInput.value.trim();
+
+            // If input is empty, try to paste from clipboard automatically
+            if (!token) {
+                try {
+                    const clipboardText = await navigator.clipboard.readText();
+                    if (clipboardText) {
+                        token = clipboardText.trim();
+                        tokenInput.value = clipboardText; // Also update the input field
+                    }
+                } catch (err) {
+                    console.error('Failed to read clipboard contents: ', err);
+                    // Don't show an alert here, just proceed with empty token
+                    // The existing validation below will catch it
+                }
+            }
 
             // Check for a token within quotes and extract it
             const quoteMatch = token.match(/"(.*?)"/);
