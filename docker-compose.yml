@@ -7,9 +7,6 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
-    # Attach this service to the external network.
-    networks:
-      - my-proxy-net
     # Pass the WS_PATH from a .env file or the environment to the container.
     # This should match the WS_PATH used by your playwright-server.
     environment:
@@ -18,8 +15,5 @@ services:
       - PASSWORD=${PASSWORD}
     ports:
       - "5010:8080"
-
-networks:
-  my-proxy-net:
-    external: true
-    name: playwright-server
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
