@@ -7,6 +7,8 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
+    # Pass the WS_PATH from a .env file or the environment to the container.
+    # This should match the WS_PATH used by your playwright-server.
     environment:
       - WS_PATH=${WS_PATH}
       - USERNAME=${USERNAME}
