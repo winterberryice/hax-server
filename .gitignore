@@ -16,6 +16,4 @@ lerna-debug.log*
 .env.production.local
 
 # Database
-stats.db
-stats.db-shm
-stats.db-wal
+data/

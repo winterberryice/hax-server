@@ -225,9 +225,10 @@ CREATE TABLE match_players (
 ```
 
 ### Lokalizacja
-- Plik: `/home/user/hax-server/stats.db`
-- Dodany do `.gitignore`
-- Docker volume dla trwałości
+- Plik: `./data/stats.db` (relative to project root)
+- Folder `data/` dodany do `.gitignore`
+- **Docker volume:** `haxball-data:/app/data` - baza przetrwa restart kontenera
+- W development: dane w lokalnym folderze `data/`
 
 ---
 

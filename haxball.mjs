@@ -370,7 +370,7 @@ export async function start(token) {
 
         // Initialize stats tracker
         updateState({ status_message: 'Initializing stats tracker...' });
-        const statsTracker = new HaxballStatsTracker(page, './stats.db');
+        const statsTracker = new HaxballStatsTracker(page, './data/stats.db');
         await statsTracker.initialize();
         updateState({ statsTracker });
 
