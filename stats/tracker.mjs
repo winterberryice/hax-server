@@ -96,7 +96,12 @@ export class HaxballStatsTracker {
     handleTeamGoal(team, scorer, assister) {
         if (!this.currentMatch) return;
 
-        console.log(`[Stats] Goal - Team: ${team}, Scorer: ${scorer?.name}, Assister: ${assister?.name}`);
+        if (!scorer) {
+            console.log(`[Stats] Goal - Team: ${team}, Scorer: UNKNOWN (no ball touches recorded), Assister: N/A`);
+            return; // Can't attribute goal to anyone
+        }
+
+        console.log(`[Stats] Goal - Team: ${team}, Scorer: ${scorer.name}, Assister: ${assister?.name || 'none'}`);
 
         // Update scorer stats
         if (scorer) {
