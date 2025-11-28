@@ -1,7 +1,7 @@
 import http from 'http';
 import fs from 'fs';
 import url from 'url';
-import { start, stop, getRoomState, setStateUpdateCallback } from './haxball.mjs';
+import { start, stop, getRoomState, setStateUpdateCallback, getStatsTracker } from './haxball.mjs';
 
 const PORT = process.env.PORT || 8080;
 
@@ -119,6 +119,21 @@ const server = http.createServer(async (req, res) => {
         } catch (error) {
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ message: `Failed to stop room: ${error.message}` }));
+        }
+    } else if (pathname === '/clear-stats' && req.method === 'POST') {
+        try {
+            const statsTracker = getStatsTracker();
+            if (!statsTracker) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ message: "Stats tracker not initialized. Start the room first." }));
+                return;
+            }
+            statsTracker.clearStats();
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ message: "Statistics cleared successfully." }));
+        } catch (error) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ message: `Failed to clear statistics: ${error.message}` }));
         }
     } else {
         res.writeHead(404, { 'Content-Type': 'text/plain' });

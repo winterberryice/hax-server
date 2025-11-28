@@ -35,6 +35,10 @@ export function getRoomState() {
     };
 }
 
+export function getStatsTracker() {
+    return state.statsTracker;
+}
+
 async function initializeRoom(token = null) {
     if (!state.page) return;
 
