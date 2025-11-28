@@ -315,24 +315,24 @@ export class HaxballStatsTracker {
         const redPlayers = match.players.filter(p => p.team === 1);
         const bluePlayers = match.players.filter(p => p.team === 2);
 
-        let output = `🏁 Ostatni mecz: Red ${match.score_red} - ${match.score_blue} Blue\n`;
+        let output = `🏁 Ostatni mecz: 🔴 Red ${match.score_red} - ${match.score_blue} Blue 🔵\n`;
 
         // Red scorers
         const redScorers = redPlayers.filter(p => p.goals > 0);
         if (redScorers.length > 0) {
             const scorersList = redScorers.map(p => `${p.name} (${p.goals})`).join(', ');
-            output += `⚽ Strzelcy Red: ${scorersList}\n`;
+            output += `⚽ Strzelcy 🔴 Red: ${scorersList}\n`;
         } else {
-            output += `⚽ Strzelcy Red: Brak\n`;
+            output += `⚽ Strzelcy 🔴 Red: Brak\n`;
         }
 
         // Blue scorers
         const blueScorers = bluePlayers.filter(p => p.goals > 0);
         if (blueScorers.length > 0) {
             const scorersList = blueScorers.map(p => `${p.name} (${p.goals})`).join(', ');
-            output += `⚽ Strzelcy Blue: ${scorersList}`;
+            output += `⚽ Strzelcy 🔵 Blue: ${scorersList}`;
         } else {
-            output += `⚽ Strzelcy Blue: Brak`;
+            output += `⚽ Strzelcy 🔵 Blue: Brak`;
         }
 
         return output;
