@@ -391,11 +391,16 @@ async function initializeRoom(token = null) {
             }
 
             if (window.statsOnPlayerChat) {
+                // Echo command in gray
+                room.sendAnnouncement(`> ${message}`, null, 0xAAAAAA, "normal", 0);
+
                 // Call async and handle response
                 Promise.resolve(window.statsOnPlayerChat(authData.auth, message))
                     .then(msg => {
                         if (msg) {
                             room.sendAnnouncement(msg, null, 0xFFFFFF, "normal", 1);
+                            // Separator after response
+                            room.sendAnnouncement('─────────────────────', null, 0xAAAAAA, "normal", 0);
                         }
                     })
                     .catch(err => {
