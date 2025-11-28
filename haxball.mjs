@@ -146,7 +146,7 @@ async function initializeRoom(token = null) {
             gameState.isGameRunning = true;
             gameState.lastTouches = [];
             gameState.matchGoals = {};
-            gameState.finalScores = null; // Reset final scores
+            gameState.finalScores = { red: 0, blue: 0 }; // Initialize to 0:0 for draw tracking
 
             const allPlayers = room.getPlayerList();
 
