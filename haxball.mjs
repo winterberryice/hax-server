@@ -69,6 +69,7 @@ async function initializeRoom(token = null) {
             lastTouches: [], // { playerId, playerAuth, playerName, playerTeam, timestamp }
             matchGoals: {}, // { auth: { name, team, goals, assists } }
             playerAuthMap: {}, // Map player.id -> { auth, name } (room.getPlayerList() doesn't include auth)
+            finalScores: null, // Saved from onTeamVictory, null if draw/stopped early
         };
 
         // Admin management logic
@@ -118,6 +119,7 @@ async function initializeRoom(token = null) {
             gameState.isGameRunning = true;
             gameState.lastTouches = [];
             gameState.matchGoals = {};
+            gameState.finalScores = null; // Reset final scores
 
             const allPlayers = room.getPlayerList();
 
@@ -164,28 +166,23 @@ async function initializeRoom(token = null) {
         };
 
         // Game stop
-        room.onGameStop = async (byPlayer) => {
+        room.onGameStop = (byPlayer) => {
             if (!gameState.isGameRunning) return;
             gameState.isGameRunning = false;
 
-            // Retry mechanism for getScores (race condition fix)
-            let scores = null;
-            let retries = 0;
-            const maxRetries = 5;
+            console.log(`[Stats] [2/2] onGameStop fired - finalScores available: ${!!gameState.finalScores}`);
 
-            while (!scores && retries < maxRetries) {
-                scores = room.getScores();
-                if (!scores) {
-                    console.log(`[Stats] Warning: scores is null in onGameStop (attempt ${retries + 1}/${maxRetries})`);
-                    await new Promise(resolve => setTimeout(resolve, 100)); // Wait 100ms
-                    retries++;
-                }
-            }
+            // Use scores from onTeamVictory (getScores() returns null after game ends)
+            // If no victory (draw/stopped early), try getScores() as fallback
+            let scores = gameState.finalScores || room.getScores();
 
             if (!scores) {
-                console.log('[Stats] ERROR: Failed to get scores after retries, skipping match save');
+                console.log('[Stats] ERROR: No scores available in onGameStop (game stopped early or draw?)');
                 return;
             }
+
+            console.log(`[Stats] Using scores - Red: ${scores.red}, Blue: ${scores.blue}, Source: ${gameState.finalScores ? 'onTeamVictory/onTeamGoal' : 'getScores()'}`);
+
 
             const allPlayers = room.getPlayerList();
 
@@ -292,9 +289,12 @@ async function initializeRoom(token = null) {
                 gameState.matchGoals[assister.auth].assists++;
             }
 
-            // Get current score for announcement
+            // Get current score for announcement (and save for onGameStop)
             const scores = room.getScores();
-            const scoreText = `🔴 Red ${scores.red} - ${scores.blue} Blue 🔵`;
+            if (scores) {
+                gameState.finalScores = scores; // Keep updating latest scores
+            }
+            const scoreText = scores ? `🔴 Red ${scores.red} - ${scores.blue} Blue 🔵` : 'Score unavailable';
 
             // Announcement: Goal
             if (isOwnGoal) {
@@ -311,6 +311,13 @@ async function initializeRoom(token = null) {
             if (window.statsOnTeamGoal) {
                 window.statsOnTeamGoal(team, scorer, assister);
             }
+        };
+
+        // Team victory - save final scores
+        room.onTeamVictory = (scores) => {
+            // Save scores for onGameStop (getScores() returns null after game ends)
+            gameState.finalScores = scores;
+            console.log(`[Stats] [1/2] onTeamVictory fired - Red: ${scores.red}, Blue: ${scores.blue}`);
         };
 
         // Game tick - track ball touches
