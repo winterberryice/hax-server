@@ -14,5 +14,8 @@ RUN npm install
 # Copy the rest of the application code
 COPY . .
 
+# Create data directory for SQLite database
+RUN mkdir -p /app/data
+
 # The command to run when the container starts
 CMD [ "npm", "run", "start" ]

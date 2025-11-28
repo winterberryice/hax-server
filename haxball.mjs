@@ -1,4 +1,5 @@
 import { chromium } from "playwright";
+import { HaxballStatsTracker } from "./stats/index.mjs";
 
 // The WebSocket endpoint for the existing Playwright server.
 const wsPath = process.env.WS_PATH;
@@ -9,6 +10,7 @@ let state = {
     room_url: null,
     browser: null,
     page: null,
+    statsTracker: null,
 };
 
 let onStateUpdate = () => {}; // Placeholder for the callback
@@ -60,15 +62,275 @@ async function initializeRoom(token = null) {
         room.setTimeLimit(3);
         room.onRoomLink = (url) => window.onRoomLinkSet(url);
 
-        // Optional: Admin management logic
+        // Stats tracking state
+        const ASSIST_TIME_WINDOW = 3000; // 3 seconds
+        let gameState = {
+            isGameRunning: false,
+            lastTouches: [], // { playerId, playerAuth, playerName, playerTeam, timestamp }
+            matchGoals: {}, // { auth: { name, team, goals, assists } }
+        };
+
+        // Admin management logic
         function updateAdmins() {
             const players = room.getPlayerList();
             if (players.length > 0 && !players.some(p => p.admin)) {
                 room.setPlayerAdmin(players[0].id, true);
             }
         }
-        room.onPlayerJoin = updateAdmins;
-        room.onPlayerLeave = updateAdmins;
+
+        // Player join
+        room.onPlayerJoin = (player) => {
+            updateAdmins();
+
+            // Only track players with valid auth (can be null if validation fails)
+            if (window.statsOnPlayerJoin && player.auth) {
+                window.statsOnPlayerJoin(player.auth, player.name);
+            } else if (!player.auth) {
+                console.log(`[Stats] Player joined without auth: ${player.name} (id: ${player.id})`);
+            }
+        };
+
+        // Player leave
+        room.onPlayerLeave = (player) => {
+            updateAdmins();
+            if (window.statsOnPlayerLeave && player.auth) {
+                window.statsOnPlayerLeave(player.auth);
+            }
+        };
+
+        // Game start
+        room.onGameStart = (byPlayer) => {
+            gameState.isGameRunning = true;
+            gameState.lastTouches = [];
+            gameState.matchGoals = {};
+
+            // Only include players with valid auth
+            const players = room.getPlayerList()
+                .filter(p => p.team !== 0 && p.auth)
+                .map(p => ({
+                    auth: p.auth,
+                    name: p.name,
+                    team: p.team,
+                }));
+
+            // Initialize match goals tracker
+            players.forEach(p => {
+                gameState.matchGoals[p.auth] = {
+                    name: p.name,
+                    team: p.team,
+                    goals: 0,
+                    assists: 0
+                };
+            });
+
+            // Announcement: Match started
+            room.sendAnnouncement('🏁 MECZ ROZPOCZĘTY!', null, 0xFFFFFF, 'bold', 2);
+            room.sendAnnouncement('🔴 Red vs Blue 🔵', null, 0xFFFFFF, 'normal', 1);
+
+            if (window.statsOnGameStart) {
+                window.statsOnGameStart(players);
+            }
+        };
+
+        // Game stop
+        room.onGameStop = (byPlayer) => {
+            if (!gameState.isGameRunning) return;
+            gameState.isGameRunning = false;
+
+            const scores = room.getScores();
+            if (!scores) {
+                console.log('[Stats] Warning: scores is null in onGameStop');
+                return;
+            }
+
+            const allPlayers = room.getPlayerList();
+
+            // Only include players with valid auth
+            const redPlayers = allPlayers
+                .filter(p => p.team === 1 && p.auth)
+                .map(p => ({
+                    auth: p.auth,
+                    name: p.name,
+                }));
+
+            const bluePlayers = allPlayers
+                .filter(p => p.team === 2 && p.auth)
+                .map(p => ({
+                    auth: p.auth,
+                    name: p.name,
+                }));
+
+            // Announcement: Match ended
+            room.sendAnnouncement('🏁 KONIEC MECZU!', null, 0xFFFFFF, 'bold', 2);
+            room.sendAnnouncement(`🔴 Red ${scores.red} - ${scores.blue} Blue 🔵`, null, 0xFFFFFF, 'bold', 1);
+
+            // Get top scorers from each team
+            const redScorers = Object.values(gameState.matchGoals)
+                .filter(p => p.team === 1 && p.goals > 0)
+                .sort((a, b) => b.goals - a.goals);
+
+            const blueScorers = Object.values(gameState.matchGoals)
+                .filter(p => p.team === 2 && p.goals > 0)
+                .sort((a, b) => b.goals - a.goals);
+
+            // Display top scorers
+            if (redScorers.length > 0 || blueScorers.length > 0) {
+                room.sendAnnouncement('⚽ Top strzelcy:', null, 0xFFFFFF, 'normal', 1);
+
+                if (redScorers.length > 0) {
+                    const redText = redScorers.map(p => `${p.name} (${p.goals})`).join(', ');
+                    room.sendAnnouncement(`  Red: ${redText}`, null, 0xFFFFFF, 'normal', 0);
+                }
+
+                if (blueScorers.length > 0) {
+                    const blueText = blueScorers.map(p => `${p.name} (${p.goals})`).join(', ');
+                    room.sendAnnouncement(`  Blue: ${blueText}`, null, 0xFFFFFF, 'normal', 0);
+                }
+            }
+
+            if (window.statsOnGameStop) {
+                window.statsOnGameStop({
+                    scoreRed: scores.red,
+                    scoreBlue: scores.blue,
+                    redPlayers,
+                    bluePlayers,
+                });
+            }
+        };
+
+        // Team goal
+        room.onTeamGoal = (team) => {
+            // Find scorer (last player who touched the ball)
+            let scorer = null;
+            let assister = null;
+
+            if (gameState.lastTouches.length > 0) {
+                const lastTouch = gameState.lastTouches[gameState.lastTouches.length - 1];
+                scorer = {
+                    auth: lastTouch.playerAuth,
+                    name: lastTouch.playerName,
+                    team: lastTouch.playerTeam,
+                };
+
+                // Find assister (second-to-last touch within time window)
+                if (gameState.lastTouches.length > 1) {
+                    const now = Date.now();
+                    const secondLastTouch = gameState.lastTouches[gameState.lastTouches.length - 2];
+
+                    const timeDiff = now - secondLastTouch.timestamp;
+                    const isSamePlayer = secondLastTouch.playerId === lastTouch.playerId;
+                    const isSameTeam = secondLastTouch.playerTeam === lastTouch.playerTeam;
+
+                    if (timeDiff <= ASSIST_TIME_WINDOW && !isSamePlayer && isSameTeam) {
+                        assister = {
+                            auth: secondLastTouch.playerAuth,
+                            name: secondLastTouch.playerName,
+                            isSelf: false,
+                        };
+                    }
+                }
+            }
+
+            // Track goals for match summary
+            const isOwnGoal = scorer && scorer.team !== team;
+            if (scorer && !isOwnGoal && gameState.matchGoals[scorer.auth]) {
+                gameState.matchGoals[scorer.auth].goals++;
+            }
+            if (assister && !assister.isSelf && gameState.matchGoals[assister.auth]) {
+                gameState.matchGoals[assister.auth].assists++;
+            }
+
+            // Get current score for announcement
+            const scores = room.getScores();
+            const scoreText = `🔴 Red ${scores.red} - ${scores.blue} Blue 🔵`;
+
+            // Announcement: Goal
+            if (isOwnGoal) {
+                room.sendAnnouncement(`😱 SAMOBÓJ! ${scorer.name}`, null, 0xFFFFFF, 'bold', 2);
+            } else if (scorer) {
+                let goalText = `⚽ GOOOL! ${scorer.name}`;
+                if (assister && !assister.isSelf) {
+                    goalText += ` - asysta: ${assister.name}`;
+                }
+                room.sendAnnouncement(goalText, null, 0xFFFFFF, 'bold', 2);
+            }
+            room.sendAnnouncement(scoreText, null, 0xFFFFFF, 'normal', 1);
+
+            if (window.statsOnTeamGoal) {
+                window.statsOnTeamGoal(team, scorer, assister);
+            }
+        };
+
+        // Game tick - track ball touches
+        room.onGameTick = () => {
+            if (!gameState.isGameRunning) return;
+
+            const ballPosition = room.getBallPosition();
+            const players = room.getPlayerList();
+
+            for (const player of players) {
+                if (player.team === 0) continue; // Skip spectators
+                if (!player.auth) continue; // Skip players without auth
+
+                const playerDisc = room.getPlayerDiscProperties(player.id);
+                if (!playerDisc) continue;
+
+                // Calculate distance between player and ball
+                const dx = playerDisc.x - ballPosition.x;
+                const dy = playerDisc.y - ballPosition.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                // If player is touching the ball (within radius)
+                const touchRadius = 15 + 10; // player radius + ball radius (approximate)
+                if (distance < touchRadius) {
+                    const lastTouch = gameState.lastTouches[gameState.lastTouches.length - 1];
+
+                    // Only record if it's a different player or enough time has passed
+                    if (!lastTouch || lastTouch.playerId !== player.id || Date.now() - lastTouch.timestamp > 100) {
+                        gameState.lastTouches.push({
+                            playerId: player.id,
+                            playerAuth: player.auth,
+                            playerName: player.name,
+                            playerTeam: player.team,
+                            timestamp: Date.now(),
+                        });
+
+                        // Keep only last 5 touches
+                        if (gameState.lastTouches.length > 5) {
+                            gameState.lastTouches.shift();
+                        }
+                    }
+                    break; // Only one player can touch at a time
+                }
+            }
+        };
+
+        // Player chat - handle commands
+        room.onPlayerChat = (player, message) => {
+            if (!message.startsWith('!')) return true;
+
+            // Only handle commands from players with valid auth
+            if (!player.auth) {
+                room.sendAnnouncement('❌ Statystyki niedostępne (brak auth)', player.id, 0xFFFFFF, "normal", 0);
+                return false;
+            }
+
+            if (window.statsOnPlayerChat) {
+                // Call async and handle response
+                Promise.resolve(window.statsOnPlayerChat(player.auth, message))
+                    .then(msg => {
+                        if (msg) {
+                            room.sendAnnouncement(msg, null, 0xFFFFFF, "normal", 1);
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Error handling chat command:', err);
+                    });
+                return false; // Prevent message from showing in chat
+            }
+
+            return true;
+        };
     }, roomConfig);
 
     updateState({ status_message: 'Room script executed. Waiting for room link...' });
@@ -106,6 +368,12 @@ export async function start(token) {
 
         await page.waitForFunction(() => window.HBInit, null, { timeout: 30000 });
 
+        // Initialize stats tracker
+        updateState({ status_message: 'Initializing stats tracker...' });
+        const statsTracker = new HaxballStatsTracker(page, './data/stats.db');
+        await statsTracker.initialize();
+        updateState({ statsTracker });
+
         await initializeRoom(token);
 
     } catch (error) {
@@ -119,6 +387,15 @@ export async function stop(reason = 'Room stopped by admin.') {
     if (state.status === 'stopped') return;
 
     updateState({ status: 'stopping', status_message: `Stopping room: ${reason}` });
+
+    // Close stats tracker
+    if (state.statsTracker) {
+        try {
+            state.statsTracker.close();
+        } catch (e) {
+            console.error("Ignoring error while closing stats tracker:", e.message);
+        }
+    }
 
     if (state.page && !state.page.isClosed()) {
         try {
@@ -145,5 +422,6 @@ export async function stop(reason = 'Room stopped by admin.') {
         room_url: null,
         browser: null,
         page: null,
+        statsTracker: null,
     });
 }
