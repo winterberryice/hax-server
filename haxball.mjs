@@ -168,16 +168,20 @@ async function initializeRoom(token = null) {
             if (!gameState.isGameRunning) return;
             gameState.isGameRunning = false;
 
+            // Initial delay before first check (scores may not be ready immediately)
+            await new Promise(resolve => setTimeout(resolve, 100));
+
             // Retry mechanism for getScores (race condition fix)
             let scores = null;
             let retries = 0;
-            const maxRetries = 5;
+            const maxRetries = 10; // Increased from 5
+            const retryDelay = 200; // Increased from 100ms
 
             while (!scores && retries < maxRetries) {
                 scores = room.getScores();
                 if (!scores) {
                     console.log(`[Stats] Warning: scores is null in onGameStop (attempt ${retries + 1}/${maxRetries})`);
-                    await new Promise(resolve => setTimeout(resolve, 100)); // Wait 100ms
+                    await new Promise(resolve => setTimeout(resolve, retryDelay));
                     retries++;
                 }
             }
