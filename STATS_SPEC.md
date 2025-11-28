@@ -160,7 +160,25 @@ Edge case - mecz 0-0:
 
 ## 💾 Baza danych SQLite
 
+### System wersjonowania
+
+Baza danych używa **systemu migracji wersjonowanych**:
+- Każda zmiana schema to osobna migracja z numerem wersji
+- Aktualny numer wersji przechowywany w tabeli `schema_version`
+- Przy starcie sprawdzana jest wersja i wykonywane są brakujące migracje
+- Proste zmiany: `ALTER TABLE ADD COLUMN`
+- Złożone zmiany: CREATE new → INSERT SELECT → DROP old → RENAME
+
+**Obecna wersja: 1** (initial schema)
+
 ### Struktura (relacyjna)
+
+#### Tabela: `schema_version`
+```sql
+CREATE TABLE schema_version (
+  version INTEGER PRIMARY KEY
+);
+```
 
 #### Tabela: `players`
 ```sql
