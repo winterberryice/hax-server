@@ -68,6 +68,7 @@ async function initializeRoom(token = null) {
             isGameRunning: false,
             lastTouches: [], // { playerId, playerAuth, playerName, playerTeam, timestamp }
             matchGoals: {}, // { auth: { name, team, goals, assists } }
+            playerAuthMap: {}, // Map player.id -> { auth, name } (room.getPlayerList() doesn't include auth)
         };
 
         // Admin management logic
@@ -82,6 +83,14 @@ async function initializeRoom(token = null) {
         room.onPlayerJoin = (player) => {
             updateAdmins();
 
+            // Store player auth mapping (room.getPlayerList() doesn't include auth)
+            if (player.auth) {
+                gameState.playerAuthMap[player.id] = {
+                    auth: player.auth,
+                    name: player.name,
+                };
+            }
+
             // Only track players with valid auth (can be null if validation fails)
             if (window.statsOnPlayerJoin && player.auth) {
                 window.statsOnPlayerJoin(player.auth, player.name);
@@ -93,6 +102,12 @@ async function initializeRoom(token = null) {
         // Player leave
         room.onPlayerLeave = (player) => {
             updateAdmins();
+
+            // Remove from auth mapping
+            if (gameState.playerAuthMap[player.id]) {
+                delete gameState.playerAuthMap[player.id];
+            }
+
             if (window.statsOnPlayerLeave && player.auth) {
                 window.statsOnPlayerLeave(player.auth);
             }
@@ -109,17 +124,21 @@ async function initializeRoom(token = null) {
             // Debug: Log all players and their state
             console.log(`[Stats] Game starting - Total players in room: ${allPlayers.length}`);
             allPlayers.forEach(p => {
-                console.log(`  - Player: ${p.name}, Team: ${p.team}, HasAuth: ${!!p.auth}, ID: ${p.id}`);
+                const authData = gameState.playerAuthMap[p.id];
+                console.log(`  - Player: ${p.name}, Team: ${p.team}, HasAuth: ${!!authData}, ID: ${p.id}, Auth: ${authData?.auth || 'none'}`);
             });
 
-            // Only include players with valid auth and in a team
+            // Only include players with valid auth and in a team (use playerAuthMap)
             const players = allPlayers
-                .filter(p => p.team !== 0 && p.auth)
-                .map(p => ({
-                    auth: p.auth,
-                    name: p.name,
-                    team: p.team,
-                }));
+                .filter(p => p.team !== 0 && gameState.playerAuthMap[p.id])
+                .map(p => {
+                    const authData = gameState.playerAuthMap[p.id];
+                    return {
+                        auth: authData.auth,
+                        name: p.name,
+                        team: p.team,
+                    };
+                });
 
             // Initialize match goals tracker
             players.forEach(p => {
@@ -170,20 +189,26 @@ async function initializeRoom(token = null) {
 
             const allPlayers = room.getPlayerList();
 
-            // Only include players with valid auth
+            // Only include players with valid auth (use playerAuthMap)
             const redPlayers = allPlayers
-                .filter(p => p.team === 1 && p.auth)
-                .map(p => ({
-                    auth: p.auth,
-                    name: p.name,
-                }));
+                .filter(p => p.team === 1 && gameState.playerAuthMap[p.id])
+                .map(p => {
+                    const authData = gameState.playerAuthMap[p.id];
+                    return {
+                        auth: authData.auth,
+                        name: p.name,
+                    };
+                });
 
             const bluePlayers = allPlayers
-                .filter(p => p.team === 2 && p.auth)
-                .map(p => ({
-                    auth: p.auth,
-                    name: p.name,
-                }));
+                .filter(p => p.team === 2 && gameState.playerAuthMap[p.id])
+                .map(p => {
+                    const authData = gameState.playerAuthMap[p.id];
+                    return {
+                        auth: authData.auth,
+                        name: p.name,
+                    };
+                });
 
             // Announcement: Match ended
             room.sendAnnouncement('🏁 KONIEC MECZU!', null, 0xFFFFFF, 'bold', 2);
@@ -297,7 +322,10 @@ async function initializeRoom(token = null) {
 
             for (const player of players) {
                 if (player.team === 0) continue; // Skip spectators
-                if (!player.auth) continue; // Skip players without auth
+
+                // Skip players without auth (use playerAuthMap)
+                const authData = gameState.playerAuthMap[player.id];
+                if (!authData) continue;
 
                 const playerDisc = room.getPlayerDiscProperties(player.id);
                 if (!playerDisc) continue;
@@ -316,7 +344,7 @@ async function initializeRoom(token = null) {
                     if (!lastTouch || lastTouch.playerId !== player.id || Date.now() - lastTouch.timestamp > 50) {
                         gameState.lastTouches.push({
                             playerId: player.id,
-                            playerAuth: player.auth,
+                            playerAuth: authData.auth,
                             playerName: player.name,
                             playerTeam: player.team,
                             timestamp: Date.now(),
@@ -336,15 +364,16 @@ async function initializeRoom(token = null) {
         room.onPlayerChat = (player, message) => {
             if (!message.startsWith('!')) return true;
 
-            // Only handle commands from players with valid auth
-            if (!player.auth) {
+            // Only handle commands from players with valid auth (use playerAuthMap)
+            const authData = gameState.playerAuthMap[player.id];
+            if (!authData) {
                 room.sendAnnouncement('❌ Statystyki niedostępne (brak auth)', player.id, 0xFFFFFF, "normal", 0);
                 return false;
             }
 
             if (window.statsOnPlayerChat) {
                 // Call async and handle response
-                Promise.resolve(window.statsOnPlayerChat(player.auth, message))
+                Promise.resolve(window.statsOnPlayerChat(authData.auth, message))
                     .then(msg => {
                         if (msg) {
                             room.sendAnnouncement(msg, null, 0xFFFFFF, "normal", 1);
