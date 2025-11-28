@@ -170,14 +170,19 @@ async function initializeRoom(token = null) {
             if (!gameState.isGameRunning) return;
             gameState.isGameRunning = false;
 
+            console.log(`[Stats] [2/2] onGameStop fired - finalScores available: ${!!gameState.finalScores}`);
+
             // Use scores from onTeamVictory (getScores() returns null after game ends)
             // If no victory (draw/stopped early), try getScores() as fallback
             let scores = gameState.finalScores || room.getScores();
 
             if (!scores) {
-                console.log('[Stats] Warning: No scores available in onGameStop (game stopped early or draw?)');
+                console.log('[Stats] ERROR: No scores available in onGameStop (game stopped early or draw?)');
                 return;
             }
+
+            console.log(`[Stats] Using scores - Red: ${scores.red}, Blue: ${scores.blue}, Source: ${gameState.finalScores ? 'onTeamVictory/onTeamGoal' : 'getScores()'}`);
+
 
             const allPlayers = room.getPlayerList();
 
@@ -312,7 +317,7 @@ async function initializeRoom(token = null) {
         room.onTeamVictory = (scores) => {
             // Save scores for onGameStop (getScores() returns null after game ends)
             gameState.finalScores = scores;
-            console.log(`[Stats] Team victory - Red: ${scores.red}, Blue: ${scores.blue}`);
+            console.log(`[Stats] [1/2] onTeamVictory fired - Red: ${scores.red}, Blue: ${scores.blue}`);
         };
 
         // Game tick - track ball touches
