@@ -4,6 +4,9 @@ FROM node:24-alpine
 # Set the working directory inside the container
 WORKDIR /app
 
+# Install build dependencies for native modules (better-sqlite3)
+RUN apk add --no-cache python3 make g++
+
 # Copy package.json and package-lock.json (if available)
 # This leverages Docker's build cache.
 COPY package*.json ./
