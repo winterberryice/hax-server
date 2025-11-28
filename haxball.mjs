@@ -81,15 +81,19 @@ async function initializeRoom(token = null) {
         // Player join
         room.onPlayerJoin = (player) => {
             updateAdmins();
-            if (window.statsOnPlayerJoin) {
+
+            // Only track players with valid auth (can be null if validation fails)
+            if (window.statsOnPlayerJoin && player.auth) {
                 window.statsOnPlayerJoin(player.auth, player.name);
+            } else if (!player.auth) {
+                console.log(`[Stats] Player joined without auth: ${player.name} (id: ${player.id})`);
             }
         };
 
         // Player leave
         room.onPlayerLeave = (player) => {
             updateAdmins();
-            if (window.statsOnPlayerLeave) {
+            if (window.statsOnPlayerLeave && player.auth) {
                 window.statsOnPlayerLeave(player.auth);
             }
         };
@@ -100,11 +104,14 @@ async function initializeRoom(token = null) {
             gameState.lastTouches = [];
             gameState.matchGoals = {};
 
-            const players = room.getPlayerList().filter(p => p.team !== 0).map(p => ({
-                auth: p.auth,
-                name: p.name,
-                team: p.team,
-            }));
+            // Only include players with valid auth
+            const players = room.getPlayerList()
+                .filter(p => p.team !== 0 && p.auth)
+                .map(p => ({
+                    auth: p.auth,
+                    name: p.name,
+                    team: p.team,
+                }));
 
             // Initialize match goals tracker
             players.forEach(p => {
@@ -131,17 +138,27 @@ async function initializeRoom(token = null) {
             gameState.isGameRunning = false;
 
             const scores = room.getScores();
+            if (!scores) {
+                console.log('[Stats] Warning: scores is null in onGameStop');
+                return;
+            }
+
             const allPlayers = room.getPlayerList();
 
-            const redPlayers = allPlayers.filter(p => p.team === 1).map(p => ({
-                auth: p.auth,
-                name: p.name,
-            }));
+            // Only include players with valid auth
+            const redPlayers = allPlayers
+                .filter(p => p.team === 1 && p.auth)
+                .map(p => ({
+                    auth: p.auth,
+                    name: p.name,
+                }));
 
-            const bluePlayers = allPlayers.filter(p => p.team === 2).map(p => ({
-                auth: p.auth,
-                name: p.name,
-            }));
+            const bluePlayers = allPlayers
+                .filter(p => p.team === 2 && p.auth)
+                .map(p => ({
+                    auth: p.auth,
+                    name: p.name,
+                }));
 
             // Announcement: Match ended
             room.sendAnnouncement('🏁 KONIEC MECZU!', null, 0xFFFFFF, 'bold', 2);
@@ -253,6 +270,7 @@ async function initializeRoom(token = null) {
 
             for (const player of players) {
                 if (player.team === 0) continue; // Skip spectators
+                if (!player.auth) continue; // Skip players without auth
 
                 const playerDisc = room.getPlayerDiscProperties(player.id);
                 if (!playerDisc) continue;
@@ -290,6 +308,12 @@ async function initializeRoom(token = null) {
         // Player chat - handle commands
         room.onPlayerChat = (player, message) => {
             if (!message.startsWith('!')) return true;
+
+            // Only handle commands from players with valid auth
+            if (!player.auth) {
+                room.sendAnnouncement('❌ Statystyki niedostępne (brak auth)', player.id, 0xFFFFFF, "normal", 0);
+                return false;
+            }
 
             if (window.statsOnPlayerChat) {
                 // Call async and handle response
