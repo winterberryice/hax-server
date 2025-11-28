@@ -374,6 +374,13 @@ export class HaxballStatsTracker {
     }
 
     /**
+     * Delete test players (names starting with ___test)
+     */
+    deleteTestPlayers() {
+        return this.db.deleteTestPlayers();
+    }
+
+    /**
      * Close database connection
      */
     close() {

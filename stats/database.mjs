@@ -282,6 +282,50 @@ export class StatsDatabase {
     }
 
     /**
+     * Delete test players and their related data
+     * Removes all players whose name starts with '___test'
+     */
+    deleteTestPlayers() {
+        const deleteTransaction = this.db.transaction(() => {
+            // Get all test player auths
+            const testPlayers = this.db.prepare(`
+                SELECT auth FROM players WHERE name LIKE '___test%'
+            `).all();
+
+            if (testPlayers.length === 0) {
+                console.log('[DB] No test players found to delete');
+                return 0;
+            }
+
+            const testAuths = testPlayers.map(p => p.auth);
+            const placeholders = testAuths.map(() => '?').join(',');
+
+            // Delete from match_players
+            this.db.prepare(`DELETE FROM match_players WHERE player_auth IN (${placeholders})`).run(...testAuths);
+
+            // Delete matches where all players were test players
+            this.db.exec(`
+                DELETE FROM matches WHERE id IN (
+                    SELECT DISTINCT m.id
+                    FROM matches m
+                    LEFT JOIN match_players mp ON m.id = mp.match_id
+                    LEFT JOIN players p ON mp.player_auth = p.auth
+                    GROUP BY m.id
+                    HAVING COUNT(DISTINCT CASE WHEN p.name NOT LIKE '___test%' THEN p.auth END) = 0
+                )
+            `);
+
+            // Delete test players
+            this.db.prepare(`DELETE FROM players WHERE auth IN (${placeholders})`).run(...testAuths);
+
+            console.log(`[DB] Deleted ${testPlayers.length} test players and their data`);
+            return testPlayers.length;
+        });
+
+        return deleteTransaction();
+    }
+
+    /**
      * Close database connection
      */
     close() {

@@ -52,6 +52,8 @@
         <h3 style="color: #dc3545;">Danger Zone</h3>
         <p>Permanently delete all statistics from the database. This action cannot be undone.</p>
         <button type="button" id="clear-stats-btn" style="background-color: #dc3545; color: white; border: none;">Clear Database</button>
+        <p style="margin-top: 1.5em;">Delete all test players (names starting with <code>___test</code>) and their statistics.</p>
+        <button type="button" id="delete-test-btn" style="background-color: #ffc107; color: black; border: none;">Delete Test Players</button>
     </div>
 
     <script>
@@ -62,6 +64,7 @@
         const tokenInput = document.getElementById('token-input');
         const pasteBtn = document.getElementById('paste-btn');
         const clearStatsBtn = document.getElementById('clear-stats-btn');
+        const deleteTestBtn = document.getElementById('delete-test-btn');
 
         const API_BASE_URL = ''; // Current origin
 
@@ -170,6 +173,29 @@
             } catch (error) {
                 alert(`❌ Error: ${error.message}`);
                 console.error('Error clearing statistics:', error);
+            }
+        });
+
+        deleteTestBtn.addEventListener('click', async () => {
+            const confirm = window.confirm('⚠️ This will delete all test players (names starting with ___test) and their statistics.\n\nAre you sure?');
+            if (!confirm) return;
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/delete-test-players`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (!response.ok) {
+                    const responseData = await response.json();
+                    throw new Error(responseData.message || 'Failed to delete test players');
+                }
+
+                const responseData = await response.json();
+                alert('✅ ' + responseData.message);
+            } catch (error) {
+                alert(`❌ Error: ${error.message}`);
+                console.error('Error deleting test players:', error);
             }
         });
 

@@ -135,6 +135,21 @@ const server = http.createServer(async (req, res) => {
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ message: `Failed to clear statistics: ${error.message}` }));
         }
+    } else if (pathname === '/delete-test-players' && req.method === 'POST') {
+        try {
+            const statsTracker = getStatsTracker();
+            if (!statsTracker) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ message: "Stats tracker not initialized. Start the room first." }));
+                return;
+            }
+            const deletedCount = statsTracker.deleteTestPlayers();
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ message: `Deleted ${deletedCount} test player(s) and their statistics.` }));
+        } catch (error) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ message: `Failed to delete test players: ${error.message}` }));
+        }
     } else {
         res.writeHead(404, { 'Content-Type': 'text/plain' });
         res.end('Not Found');
