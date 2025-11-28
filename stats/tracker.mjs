@@ -238,6 +238,11 @@ export class HaxballStatsTracker {
     handlePlayerChat(auth, message) {
         const msg = message.trim();
 
+        // !help
+        if (msg === '!help') {
+            return this.formatHelp();
+        }
+
         // !stats [player] or !me
         if (msg.startsWith('!stats') || msg === '!me') {
             const args = msg.split(' ');
@@ -339,6 +344,18 @@ export class HaxballStatsTracker {
     }
 
     /**
+     * Format help message for display
+     */
+    formatHelp() {
+        return `📖 DOSTĘPNE KOMENDY:
+!help - pokazuje tę wiadomość
+!me - twoje statystyki
+!stats [nazwa] - statystyki gracza
+!rank - ranking top ${CONFIG.RANK_LIMIT} strzelców
+!last - wyniki ostatniego meczu`;
+    }
+
+    /**
      * Calculate win rate (draws count as 0.5 wins)
      */
     calculateWinRate(player) {
@@ -347,6 +364,13 @@ export class HaxballStatsTracker {
 
         const effectiveWins = player.wins + (player.draws * 0.5);
         return ((effectiveWins / totalGames) * 100).toFixed(1);
+    }
+
+    /**
+     * Clear all statistics
+     */
+    clearStats() {
+        this.db.clearStats();
     }
 
     /**

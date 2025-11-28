@@ -268,6 +268,20 @@ export class StatsDatabase {
     }
 
     /**
+     * Clear all statistics (delete all data from tables)
+     */
+    clearStats() {
+        const clearTransaction = this.db.transaction(() => {
+            this.db.exec('DELETE FROM match_players');
+            this.db.exec('DELETE FROM matches');
+            this.db.exec('DELETE FROM players');
+        });
+
+        clearTransaction();
+        console.log('[DB] All statistics cleared');
+    }
+
+    /**
      * Close database connection
      */
     close() {
