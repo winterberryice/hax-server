@@ -67,6 +67,7 @@ async function initializeRoom(token = null) {
         let gameState = {
             isGameRunning: false,
             lastTouches: [], // { playerId, playerAuth, playerName, playerTeam, timestamp }
+            matchGoals: {}, // { auth: { name, team, goals, assists } }
         };
 
         // Admin management logic
@@ -97,12 +98,27 @@ async function initializeRoom(token = null) {
         room.onGameStart = (byPlayer) => {
             gameState.isGameRunning = true;
             gameState.lastTouches = [];
+            gameState.matchGoals = {};
 
             const players = room.getPlayerList().filter(p => p.team !== 0).map(p => ({
                 auth: p.auth,
                 name: p.name,
                 team: p.team,
             }));
+
+            // Initialize match goals tracker
+            players.forEach(p => {
+                gameState.matchGoals[p.auth] = {
+                    name: p.name,
+                    team: p.team,
+                    goals: 0,
+                    assists: 0
+                };
+            });
+
+            // Announcement: Match started
+            room.sendAnnouncement('🏁 MECZ ROZPOCZĘTY!', null, 0xFFFFFF, 'bold', 2);
+            room.sendAnnouncement('🔴 Red vs Blue 🔵', null, 0xFFFFFF, 'normal', 1);
 
             if (window.statsOnGameStart) {
                 window.statsOnGameStart(players);
@@ -126,6 +142,34 @@ async function initializeRoom(token = null) {
                 auth: p.auth,
                 name: p.name,
             }));
+
+            // Announcement: Match ended
+            room.sendAnnouncement('🏁 KONIEC MECZU!', null, 0xFFFFFF, 'bold', 2);
+            room.sendAnnouncement(`🔴 Red ${scores.red} - ${scores.blue} Blue 🔵`, null, 0xFFFFFF, 'bold', 1);
+
+            // Get top scorers from each team
+            const redScorers = Object.values(gameState.matchGoals)
+                .filter(p => p.team === 1 && p.goals > 0)
+                .sort((a, b) => b.goals - a.goals);
+
+            const blueScorers = Object.values(gameState.matchGoals)
+                .filter(p => p.team === 2 && p.goals > 0)
+                .sort((a, b) => b.goals - a.goals);
+
+            // Display top scorers
+            if (redScorers.length > 0 || blueScorers.length > 0) {
+                room.sendAnnouncement('⚽ Top strzelcy:', null, 0xFFFFFF, 'normal', 1);
+
+                if (redScorers.length > 0) {
+                    const redText = redScorers.map(p => `${p.name} (${p.goals})`).join(', ');
+                    room.sendAnnouncement(`  Red: ${redText}`, null, 0xFFFFFF, 'normal', 0);
+                }
+
+                if (blueScorers.length > 0) {
+                    const blueText = blueScorers.map(p => `${p.name} (${p.goals})`).join(', ');
+                    room.sendAnnouncement(`  Blue: ${blueText}`, null, 0xFFFFFF, 'normal', 0);
+                }
+            }
 
             if (window.statsOnGameStop) {
                 window.statsOnGameStop({
@@ -169,6 +213,31 @@ async function initializeRoom(token = null) {
                     }
                 }
             }
+
+            // Track goals for match summary
+            const isOwnGoal = scorer && scorer.team !== team;
+            if (scorer && !isOwnGoal && gameState.matchGoals[scorer.auth]) {
+                gameState.matchGoals[scorer.auth].goals++;
+            }
+            if (assister && !assister.isSelf && gameState.matchGoals[assister.auth]) {
+                gameState.matchGoals[assister.auth].assists++;
+            }
+
+            // Get current score for announcement
+            const scores = room.getScores();
+            const scoreText = `🔴 Red ${scores.red} - ${scores.blue} Blue 🔵`;
+
+            // Announcement: Goal
+            if (isOwnGoal) {
+                room.sendAnnouncement(`😱 SAMOBÓJ! ${scorer.name}`, null, 0xFFFFFF, 'bold', 2);
+            } else if (scorer) {
+                let goalText = `⚽ GOOOL! ${scorer.name}`;
+                if (assister && !assister.isSelf) {
+                    goalText += ` - asysta: ${assister.name}`;
+                }
+                room.sendAnnouncement(goalText, null, 0xFFFFFF, 'bold', 2);
+            }
+            room.sendAnnouncement(scoreText, null, 0xFFFFFF, 'normal', 1);
 
             if (window.statsOnTeamGoal) {
                 window.statsOnTeamGoal(team, scorer, assister);
