@@ -104,8 +104,16 @@ async function initializeRoom(token = null) {
             gameState.lastTouches = [];
             gameState.matchGoals = {};
 
-            // Only include players with valid auth
-            const players = room.getPlayerList()
+            const allPlayers = room.getPlayerList();
+
+            // Debug: Log all players and their state
+            console.log(`[Stats] Game starting - Total players in room: ${allPlayers.length}`);
+            allPlayers.forEach(p => {
+                console.log(`  - Player: ${p.name}, Team: ${p.team}, HasAuth: ${!!p.auth}, ID: ${p.id}`);
+            });
+
+            // Only include players with valid auth and in a team
+            const players = allPlayers
                 .filter(p => p.team !== 0 && p.auth)
                 .map(p => ({
                     auth: p.auth,
@@ -123,6 +131,10 @@ async function initializeRoom(token = null) {
                 };
             });
 
+            if (players.length === 0) {
+                console.log('[Stats] WARNING: Match starting with 0 tracked players (all players lack auth or are spectators)');
+            }
+
             // Announcement: Match started
             room.sendAnnouncement('🏁 MECZ ROZPOCZĘTY!', null, 0xFFFFFF, 'bold', 2);
             room.sendAnnouncement('🔴 Red vs Blue 🔵', null, 0xFFFFFF, 'normal', 1);
@@ -133,13 +145,26 @@ async function initializeRoom(token = null) {
         };
 
         // Game stop
-        room.onGameStop = (byPlayer) => {
+        room.onGameStop = async (byPlayer) => {
             if (!gameState.isGameRunning) return;
             gameState.isGameRunning = false;
 
-            const scores = room.getScores();
+            // Retry mechanism for getScores (race condition fix)
+            let scores = null;
+            let retries = 0;
+            const maxRetries = 5;
+
+            while (!scores && retries < maxRetries) {
+                scores = room.getScores();
+                if (!scores) {
+                    console.log(`[Stats] Warning: scores is null in onGameStop (attempt ${retries + 1}/${maxRetries})`);
+                    await new Promise(resolve => setTimeout(resolve, 100)); // Wait 100ms
+                    retries++;
+                }
+            }
+
             if (!scores) {
-                console.log('[Stats] Warning: scores is null in onGameStop');
+                console.log('[Stats] ERROR: Failed to get scores after retries, skipping match save');
                 return;
             }
 
@@ -229,6 +254,8 @@ async function initializeRoom(token = null) {
                         };
                     }
                 }
+            } else {
+                console.log('[Stats] Warning: No ball touches recorded before goal (team: ' + team + ')');
             }
 
             // Track goals for match summary
@@ -286,7 +313,7 @@ async function initializeRoom(token = null) {
                     const lastTouch = gameState.lastTouches[gameState.lastTouches.length - 1];
 
                     // Only record if it's a different player or enough time has passed
-                    if (!lastTouch || lastTouch.playerId !== player.id || Date.now() - lastTouch.timestamp > 100) {
+                    if (!lastTouch || lastTouch.playerId !== player.id || Date.now() - lastTouch.timestamp > 50) {
                         gameState.lastTouches.push({
                             playerId: player.id,
                             playerAuth: player.auth,
