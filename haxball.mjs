@@ -119,7 +119,7 @@ async function initializeRoom(token = null) {
             gameState.isGameRunning = true;
             gameState.lastTouches = [];
             gameState.matchGoals = {};
-            gameState.finalScores = null; // Reset final scores
+            gameState.finalScores = { red: 0, blue: 0 }; // Initialize to 0:0 for draw tracking
 
             const allPlayers = room.getPlayerList();
 
@@ -320,49 +320,30 @@ async function initializeRoom(token = null) {
             console.log(`[Stats] [1/2] onTeamVictory fired - Red: ${scores.red}, Blue: ${scores.blue}`);
         };
 
-        // Game tick - track ball touches
-        room.onGameTick = () => {
+        // Player ball kick - track kicks for scorer/assister detection
+        room.onPlayerBallKick = (player) => {
             if (!gameState.isGameRunning) return;
+            if (player.team === 0) return; // Skip spectators
 
-            const ballPosition = room.getBallPosition();
-            const players = room.getPlayerList();
+            // Skip players without auth (use playerAuthMap)
+            const authData = gameState.playerAuthMap[player.id];
+            if (!authData) return;
 
-            for (const player of players) {
-                if (player.team === 0) continue; // Skip spectators
+            const lastKick = gameState.lastTouches[gameState.lastTouches.length - 1];
 
-                // Skip players without auth (use playerAuthMap)
-                const authData = gameState.playerAuthMap[player.id];
-                if (!authData) continue;
+            // Only record if it's a different player or enough time has passed
+            if (!lastKick || lastKick.playerId !== player.id || Date.now() - lastKick.timestamp > 50) {
+                gameState.lastTouches.push({
+                    playerId: player.id,
+                    playerAuth: authData.auth,
+                    playerName: player.name,
+                    playerTeam: player.team,
+                    timestamp: Date.now(),
+                });
 
-                const playerDisc = room.getPlayerDiscProperties(player.id);
-                if (!playerDisc) continue;
-
-                // Calculate distance between player and ball
-                const dx = playerDisc.x - ballPosition.x;
-                const dy = playerDisc.y - ballPosition.y;
-                const distance = Math.sqrt(dx * dx + dy * dy);
-
-                // If player is touching the ball (within radius)
-                const touchRadius = 15 + 10; // player radius + ball radius (approximate)
-                if (distance < touchRadius) {
-                    const lastTouch = gameState.lastTouches[gameState.lastTouches.length - 1];
-
-                    // Only record if it's a different player or enough time has passed
-                    if (!lastTouch || lastTouch.playerId !== player.id || Date.now() - lastTouch.timestamp > 50) {
-                        gameState.lastTouches.push({
-                            playerId: player.id,
-                            playerAuth: authData.auth,
-                            playerName: player.name,
-                            playerTeam: player.team,
-                            timestamp: Date.now(),
-                        });
-
-                        // Keep only last 5 touches
-                        if (gameState.lastTouches.length > 5) {
-                            gameState.lastTouches.shift();
-                        }
-                    }
-                    break; // Only one player can touch at a time
+                // Keep only last 5 kicks
+                if (gameState.lastTouches.length > 5) {
+                    gameState.lastTouches.shift();
                 }
             }
         };
