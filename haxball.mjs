@@ -80,6 +80,33 @@ async function initializeRoom(token = null) {
             }
         }
 
+        // Helper: Record ball touch/kick for assist tracking
+        function recordBallTouch(player) {
+            if (!gameState.isGameRunning) return;
+            if (player.team === 0) return; // Skip spectators
+
+            const authData = gameState.playerAuthMap[player.id];
+            if (!authData) return; // Skip players without auth
+
+            const lastTouch = gameState.lastTouches[gameState.lastTouches.length - 1];
+
+            // Record if it's a different player or enough time has passed (0ms = record all touches)
+            if (!lastTouch || lastTouch.playerId !== player.id || Date.now() - lastTouch.timestamp > 0) {
+                gameState.lastTouches.push({
+                    playerId: player.id,
+                    playerAuth: authData.auth,
+                    playerName: player.name,
+                    playerTeam: player.team,
+                    timestamp: Date.now(),
+                });
+
+                // Keep only last 5 touches
+                if (gameState.lastTouches.length > 5) {
+                    gameState.lastTouches.shift();
+                }
+            }
+        }
+
         // Player join
         room.onPlayerJoin = (player) => {
             updateAdmins();
@@ -320,7 +347,12 @@ async function initializeRoom(token = null) {
             console.log(`[Stats] [1/2] onTeamVictory fired - Red: ${scores.red}, Blue: ${scores.blue}`);
         };
 
-        // Game tick - track ball touches
+        // Player ball kick - track kicks (passes, shots)
+        room.onPlayerBallKick = (player) => {
+            recordBallTouch(player);
+        };
+
+        // Game tick - track ball touches (deflections, dribbling)
         room.onGameTick = () => {
             if (!gameState.isGameRunning) return;
 
@@ -329,10 +361,6 @@ async function initializeRoom(token = null) {
 
             for (const player of players) {
                 if (player.team === 0) continue; // Skip spectators
-
-                // Skip players without auth (use playerAuthMap)
-                const authData = gameState.playerAuthMap[player.id];
-                if (!authData) continue;
 
                 const playerDisc = room.getPlayerDiscProperties(player.id);
                 if (!playerDisc) continue;
@@ -345,23 +373,7 @@ async function initializeRoom(token = null) {
                 // If player is touching the ball (within radius)
                 const touchRadius = 15 + 10; // player radius + ball radius (approximate)
                 if (distance < touchRadius) {
-                    const lastTouch = gameState.lastTouches[gameState.lastTouches.length - 1];
-
-                    // Only record if it's a different player or enough time has passed
-                    if (!lastTouch || lastTouch.playerId !== player.id || Date.now() - lastTouch.timestamp > 50) {
-                        gameState.lastTouches.push({
-                            playerId: player.id,
-                            playerAuth: authData.auth,
-                            playerName: player.name,
-                            playerTeam: player.team,
-                            timestamp: Date.now(),
-                        });
-
-                        // Keep only last 5 touches
-                        if (gameState.lastTouches.length > 5) {
-                            gameState.lastTouches.shift();
-                        }
-                    }
+                    recordBallTouch(player);
                     break; // Only one player can touch at a time
                 }
             }
