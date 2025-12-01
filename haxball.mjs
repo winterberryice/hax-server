@@ -94,8 +94,8 @@ async function initializeRoom(token = null) {
 
             const lastTouch = gameState.lastTouches[gameState.lastTouches.length - 1];
 
-            // Record if it's a different player or enough time has passed (0ms = record all touches)
-            if (!lastTouch || lastTouch.playerId !== player.id || Date.now() - lastTouch.timestamp > 0) {
+            // Record if it's a different player or enough time has passed (50ms throttle for same player)
+            if (!lastTouch || lastTouch.playerId !== player.id || Date.now() - lastTouch.timestamp > 50) {
                 gameState.lastTouches.push({
                     playerId: player.id,
                     playerAuth: authData.auth,
@@ -104,8 +104,8 @@ async function initializeRoom(token = null) {
                     timestamp: Date.now(),
                 });
 
-                // Keep only last 5 touches
-                if (gameState.lastTouches.length > 5) {
+                // Keep only last 2 touches (enough for goal + assist detection)
+                if (gameState.lastTouches.length > 2) {
                     gameState.lastTouches.shift();
                 }
             }
@@ -303,7 +303,6 @@ async function initializeRoom(token = null) {
                         assister = {
                             auth: secondLastTouch.playerAuth,
                             name: secondLastTouch.playerName,
-                            isSelf: false,
                         };
                     }
                 }
@@ -316,7 +315,7 @@ async function initializeRoom(token = null) {
             if (scorer && !isOwnGoal && gameState.matchGoals[scorer.auth]) {
                 gameState.matchGoals[scorer.auth].goals++;
             }
-            if (assister && !assister.isSelf && gameState.matchGoals[assister.auth]) {
+            if (assister && gameState.matchGoals[assister.auth]) {
                 gameState.matchGoals[assister.auth].assists++;
             }
 
@@ -362,6 +361,11 @@ async function initializeRoom(token = null) {
 
             const ballPosition = room.getBallPosition();
             const players = room.getPlayerList();
+            const touchRadius = 15 + 10; // player radius + ball radius
+
+            // Find the closest player touching the ball
+            let closestPlayer = null;
+            let closestDistance = touchRadius;
 
             for (const player of players) {
                 if (player.team === 0) continue; // Skip spectators
@@ -374,12 +378,16 @@ async function initializeRoom(token = null) {
                 const dy = playerDisc.y - ballPosition.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
 
-                // If player is touching the ball (within radius)
-                const touchRadius = 15 + 10; // player radius + ball radius (approximate)
-                if (distance < touchRadius) {
-                    recordBallTouch(player);
-                    break; // Only one player can touch at a time
+                // Track closest player within touch radius
+                if (distance < closestDistance) {
+                    closestDistance = distance;
+                    closestPlayer = player;
                 }
+            }
+
+            // Record touch for the closest player only
+            if (closestPlayer) {
+                recordBallTouch(closestPlayer);
             }
         };
 
