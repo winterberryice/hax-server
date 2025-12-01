@@ -361,6 +361,11 @@ async function initializeRoom(token = null) {
 
             const ballPosition = room.getBallPosition();
             const players = room.getPlayerList();
+            const touchRadius = 15 + 10; // player radius + ball radius
+
+            // Find the closest player touching the ball
+            let closestPlayer = null;
+            let closestDistance = touchRadius;
 
             for (const player of players) {
                 if (player.team === 0) continue; // Skip spectators
@@ -373,12 +378,16 @@ async function initializeRoom(token = null) {
                 const dy = playerDisc.y - ballPosition.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
 
-                // If player is touching the ball (within radius)
-                const touchRadius = 15 + 10; // player radius + ball radius (approximate)
-                if (distance < touchRadius) {
-                    recordBallTouch(player);
-                    break; // Only one player can touch at a time
+                // Track closest player within touch radius
+                if (distance < closestDistance) {
+                    closestDistance = distance;
+                    closestPlayer = player;
                 }
+            }
+
+            // Record touch for the closest player only
+            if (closestPlayer) {
+                recordBallTouch(closestPlayer);
             }
         };
 
