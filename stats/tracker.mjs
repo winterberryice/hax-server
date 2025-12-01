@@ -1,7 +1,7 @@
 import { StatsDatabase } from './database.mjs';
 
 const CONFIG = {
-    ASSIST_TIME_WINDOW: 3000,  // 3 seconds in ms
+    ASSIST_TIME_WINDOW: 5000,  // 5 seconds in ms
     RANK_LIMIT: 10,            // top 10 in !rank
 };
 
@@ -121,7 +121,7 @@ export class HaxballStatsTracker {
         }
 
         // Update assister stats
-        if (assister && !assister.isSelf) {
+        if (assister) {
             if (this.currentMatch.playerStats[assister.auth]) {
                 this.currentMatch.playerStats[assister.auth].assists++;
             }
