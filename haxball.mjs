@@ -104,8 +104,9 @@ async function initializeRoom(token = null) {
                     timestamp: Date.now(),
                 });
 
-                // Keep only last 2 touches (enough for goal + assist detection)
-                if (gameState.lastTouches.length > 2) {
+                // Keep last 10 touches (enough for deflections + assist detection)
+                // We need more than 2 to handle deflections properly
+                if (gameState.lastTouches.length > 10) {
                     gameState.lastTouches.shift();
                 }
             }
@@ -278,32 +279,52 @@ async function initializeRoom(token = null) {
 
         // Team goal
         room.onTeamGoal = (team) => {
-            // Find scorer (last player who touched the ball)
+            // Find scorer - look for last touch by scoring team (ignore deflections)
             let scorer = null;
             let assister = null;
 
             if (gameState.lastTouches.length > 0) {
-                const lastTouch = gameState.lastTouches[gameState.lastTouches.length - 1];
-                scorer = {
-                    auth: lastTouch.playerAuth,
-                    name: lastTouch.playerName,
-                    team: lastTouch.playerTeam,
-                };
+                const now = Date.now();
 
-                // Find assister (second-to-last touch within time window)
-                if (gameState.lastTouches.length > 1) {
-                    const now = Date.now();
-                    const secondLastTouch = gameState.lastTouches[gameState.lastTouches.length - 2];
+                // Find all touches from the scoring team within the time window
+                const scoringTeamTouches = gameState.lastTouches.filter(touch =>
+                    touch.playerTeam === team && (now - touch.timestamp) <= ASSIST_TIME_WINDOW
+                );
 
-                    const timeDiff = now - secondLastTouch.timestamp;
-                    const isSamePlayer = secondLastTouch.playerId === lastTouch.playerId;
-                    const isSameTeam = secondLastTouch.playerTeam === lastTouch.playerTeam;
+                if (scoringTeamTouches.length > 0) {
+                    // Last touch from scoring team is the scorer
+                    const lastScoringTouch = scoringTeamTouches[scoringTeamTouches.length - 1];
+                    scorer = {
+                        auth: lastScoringTouch.playerAuth,
+                        name: lastScoringTouch.playerName,
+                        team: lastScoringTouch.playerTeam,
+                    };
 
-                    if (timeDiff <= ASSIST_TIME_WINDOW && !isSamePlayer && isSameTeam) {
-                        assister = {
-                            auth: secondLastTouch.playerAuth,
-                            name: secondLastTouch.playerName,
+                    // Find assister (second-to-last touch from scoring team, different player)
+                    if (scoringTeamTouches.length > 1) {
+                        const secondLastScoringTouch = scoringTeamTouches[scoringTeamTouches.length - 2];
+                        const timeDiff = now - secondLastScoringTouch.timestamp;
+                        const isSamePlayer = secondLastScoringTouch.playerId === lastScoringTouch.playerId;
+
+                        if (timeDiff <= ASSIST_TIME_WINDOW && !isSamePlayer) {
+                            assister = {
+                                auth: secondLastScoringTouch.playerAuth,
+                                name: secondLastScoringTouch.playerName,
+                            };
+                        }
+                    }
+                } else {
+                    // No touch from scoring team - check if it's an own goal
+                    const lastTouch = gameState.lastTouches[gameState.lastTouches.length - 1];
+                    if (lastTouch.playerTeam !== team) {
+                        scorer = {
+                            auth: lastTouch.playerAuth,
+                            name: lastTouch.playerName,
+                            team: lastTouch.playerTeam,
                         };
+                        console.log('[Stats] Own goal detected: ' + scorer.name + ' (team ' + scorer.team + ') scored for team ' + team);
+                    } else {
+                        console.log('[Stats] Warning: No valid touches found for goal (team: ' + team + ')');
                     }
                 }
             } else {
