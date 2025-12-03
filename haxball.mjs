@@ -94,8 +94,8 @@ async function initializeRoom(token = null) {
 
             const lastTouch = gameState.lastTouches[gameState.lastTouches.length - 1];
 
-            // Record if it's a different player or enough time has passed (50ms throttle for same player)
-            if (!lastTouch || lastTouch.playerId !== player.id || Date.now() - lastTouch.timestamp > 50) {
+            // Record if it's a different player or enough time has passed (150ms throttle for same player)
+            if (!lastTouch || lastTouch.playerId !== player.id || Date.now() - lastTouch.timestamp > 150) {
                 gameState.lastTouches.push({
                     playerId: player.id,
                     playerAuth: authData.auth,
