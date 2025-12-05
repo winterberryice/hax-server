@@ -283,16 +283,35 @@ export class HaxballStatsTracker {
     }
 
     /**
+     * Format time played from minutes to human-readable format
+     */
+    formatTimePlayed(minutes) {
+        if (minutes === 0) return '0m';
+
+        const days = Math.floor(minutes / 1440); // 1440 minutes in a day
+        const hours = Math.floor((minutes % 1440) / 60);
+        const mins = minutes % 60;
+
+        const parts = [];
+        if (days > 0) parts.push(`${days}d`);
+        if (hours > 0) parts.push(`${hours}h`);
+        if (mins > 0) parts.push(`${mins}m`);
+
+        return parts.join(' ');
+    }
+
+    /**
      * Format player stats for display
      */
     formatStats(player) {
         const winRate = this.calculateWinRate(player);
         const goalsPerGame = player.games > 0 ? (player.goals / player.games).toFixed(2) : '0.00';
+        const timePlayed = this.formatTimePlayed(player.minutes_played);
 
         return `📊 Statystyki: ${player.name}
 ⚽ Bramki: ${player.goals} | Asysty: ${player.assists} | Samobóje: ${player.own_goals}
 🎮 Mecze: ${player.games} (${player.wins}W-${player.losses}L-${player.draws}D) | Win Rate: ${winRate}%
-🏆 Clean Sheets: ${player.clean_sheets} | Minuty: ${player.minutes_played}
+🏆 Clean Sheets: ${player.clean_sheets} | Czas gry: ${timePlayed}
 📈 Streak: ${player.current_streak} (best: ${player.best_streak}) | Goals/Match: ${goalsPerGame}`;
     }
 
