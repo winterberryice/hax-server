@@ -326,6 +326,48 @@ export class StatsDatabase {
     }
 
     /**
+     * Delete a specific player and their related data
+     * Removes a player by name (case-insensitive) and all their match records
+     */
+    deletePlayerStats(playerName) {
+        const deleteTransaction = this.db.transaction(() => {
+            // Get the player by name
+            const player = this.db.prepare(`
+                SELECT auth FROM players WHERE LOWER(name) = LOWER(?)
+            `).get(playerName);
+
+            if (!player) {
+                console.log(`[DB] Player "${playerName}" not found`);
+                return null;
+            }
+
+            const playerAuth = player.auth;
+
+            // Delete from match_players
+            this.db.prepare(`DELETE FROM match_players WHERE player_auth = ?`).run(playerAuth);
+
+            // Delete matches where this was the only player
+            this.db.exec(`
+                DELETE FROM matches WHERE id IN (
+                    SELECT DISTINCT m.id
+                    FROM matches m
+                    LEFT JOIN match_players mp ON m.id = mp.match_id
+                    GROUP BY m.id
+                    HAVING COUNT(mp.player_auth) = 0
+                )
+            `);
+
+            // Delete the player
+            this.db.prepare(`DELETE FROM players WHERE auth = ?`).run(playerAuth);
+
+            console.log(`[DB] Deleted player "${playerName}" and their data`);
+            return playerName;
+        });
+
+        return deleteTransaction();
+    }
+
+    /**
      * Close database connection
      */
     close() {
