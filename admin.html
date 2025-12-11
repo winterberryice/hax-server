@@ -213,8 +213,11 @@
                 return;
             }
 
-            const confirm = window.confirm(`⚠️ This will delete all statistics for player "${playerName}" and remove them from all matches.\n\nAre you sure?`);
-            if (!confirm) return;
+            const firstConfirm = confirm(`⚠️ This will permanently delete all statistics for player "${playerName}" and remove them from all matches.\n\nAre you sure you want to continue?`);
+            if (!firstConfirm) return;
+
+            const secondConfirm = confirm(`⚠️ FINAL WARNING: This action CANNOT be undone!\n\nAll stats for "${playerName}" will be PERMANENTLY deleted.\n\nDo you really want to proceed?`);
+            if (!secondConfirm) return;
 
             try {
                 const response = await fetch(`${API_BASE_URL}/delete-player-stats`, {
