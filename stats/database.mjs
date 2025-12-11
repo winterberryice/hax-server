@@ -294,7 +294,9 @@ export class StatsDatabase {
      * Clear all statistics (delete all data from tables)
      */
     clearStats() {
-        this.createBackup();
+        // Create backup first - if it fails, delete will not proceed
+        const backupPath = this.createBackup();
+        console.log('[DB] Backup successful, proceeding with clear stats');
 
         const clearTransaction = this.db.transaction(() => {
             this.db.exec('DELETE FROM match_players');
@@ -311,7 +313,9 @@ export class StatsDatabase {
      * Removes all players whose name starts with '___test'
      */
     deleteTestPlayers() {
-        this.createBackup();
+        // Create backup first - if it fails, delete will not proceed
+        const backupPath = this.createBackup();
+        console.log('[DB] Backup successful, proceeding with delete test players');
 
         const deleteTransaction = this.db.transaction(() => {
             // Get all test player auths
@@ -357,7 +361,9 @@ export class StatsDatabase {
      * Removes a player by name (case-insensitive) and all their match records
      */
     deletePlayerStats(playerName) {
-        this.createBackup();
+        // Create backup first - if it fails, delete will not proceed
+        const backupPath = this.createBackup();
+        console.log('[DB] Backup successful, proceeding with delete player stats');
 
         const deleteTransaction = this.db.transaction(() => {
             // Get the player by name
