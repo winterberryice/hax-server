@@ -388,22 +388,22 @@ export class HaxballStatsTracker {
     /**
      * Clear all statistics
      */
-    clearStats() {
-        this.db.clearStats();
+    async clearStats() {
+        await this.db.clearStats();
     }
 
     /**
      * Delete test players (names starting with ___test)
      */
-    deleteTestPlayers() {
-        return this.db.deleteTestPlayers();
+    async deleteTestPlayers() {
+        return await this.db.deleteTestPlayers();
     }
 
     /**
      * Delete a specific player's stats by name
      */
-    deletePlayerStats(playerName) {
-        return this.db.deletePlayerStats(playerName);
+    async deletePlayerStats(playerName) {
+        return await this.db.deletePlayerStats(playerName);
     }
 
     /**

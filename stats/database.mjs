@@ -142,13 +142,13 @@ export class StatsDatabase {
      * Create a backup of the database file
      * Stores backups in data/backups/ with timestamp from Date.now()
      */
-    createBackup() {
+    async createBackup() {
         try {
             const backupsDir = `${dirname(this.dbPath)}/backups`;
             mkdirSync(backupsDir, { recursive: true });
 
             const backupPath = `${backupsDir}/stats_backup_${Date.now()}.db`;
-            this.db.backup(backupPath);
+            await this.db.backup(backupPath);
 
             console.log(`[DB] Backup created: ${backupPath}`);
             return backupPath;
@@ -293,9 +293,9 @@ export class StatsDatabase {
     /**
      * Clear all statistics (delete all data from tables)
      */
-    clearStats() {
+    async clearStats() {
         // Create backup first - if it fails, delete will not proceed
-        const backupPath = this.createBackup();
+        const backupPath = await this.createBackup();
         console.log('[DB] Backup successful, proceeding with clear stats');
 
         const clearTransaction = this.db.transaction(() => {
@@ -312,9 +312,9 @@ export class StatsDatabase {
      * Delete test players and their related data
      * Removes all players whose name starts with '___test'
      */
-    deleteTestPlayers() {
+    async deleteTestPlayers() {
         // Create backup first - if it fails, delete will not proceed
-        const backupPath = this.createBackup();
+        const backupPath = await this.createBackup();
         console.log('[DB] Backup successful, proceeding with delete test players');
 
         const deleteTransaction = this.db.transaction(() => {
@@ -360,9 +360,9 @@ export class StatsDatabase {
      * Delete a specific player and their related data
      * Removes a player by name (case-insensitive) and all their match records
      */
-    deletePlayerStats(playerName) {
+    async deletePlayerStats(playerName) {
         // Create backup first - if it fails, delete will not proceed
-        const backupPath = this.createBackup();
+        const backupPath = await this.createBackup();
         console.log('[DB] Backup successful, proceeding with delete player stats');
 
         const deleteTransaction = this.db.transaction(() => {
