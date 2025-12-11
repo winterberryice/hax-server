@@ -400,6 +400,13 @@ export class HaxballStatsTracker {
     }
 
     /**
+     * Delete a specific player's stats by name
+     */
+    deletePlayerStats(playerName) {
+        return this.db.deletePlayerStats(playerName);
+    }
+
+    /**
      * Close database connection
      */
     close() {

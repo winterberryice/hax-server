@@ -150,6 +150,36 @@ const server = http.createServer(async (req, res) => {
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ message: `Failed to delete test players: ${error.message}` }));
         }
+    } else if (pathname === '/delete-player-stats' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => { body += chunk.toString(); });
+        req.on('end', () => {
+            try {
+                const { playerName } = JSON.parse(body);
+                if (!playerName) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ message: "Player name is required." }));
+                    return;
+                }
+                const statsTracker = getStatsTracker();
+                if (!statsTracker) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ message: "Stats tracker not initialized. Start the room first." }));
+                    return;
+                }
+                const result = statsTracker.deletePlayerStats(playerName);
+                if (result === null) {
+                    res.writeHead(404, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ message: `Player "${playerName}" not found.` }));
+                    return;
+                }
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ message: `Deleted all statistics for player "${playerName}".` }));
+            } catch (error) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ message: `Failed to delete player stats: ${error.message}` }));
+            }
+        });
     } else {
         res.writeHead(404, { 'Content-Type': 'text/plain' });
         res.end('Not Found');

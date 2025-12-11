@@ -54,6 +54,11 @@
         <button type="button" id="clear-stats-btn" style="background-color: #dc3545; color: white; border: none;">Clear Database</button>
         <p style="margin-top: 1.5em;">Delete all test players (names starting with <code>___test</code>) and their statistics.</p>
         <button type="button" id="delete-test-btn" style="background-color: #ffc107; color: black; border: none;">Delete Test Players</button>
+        <p style="margin-top: 1.5em;">Delete statistics for a specific player by name.</p>
+        <div style="display: flex; gap: 0.5em; align-items: center;">
+            <input type="text" id="player-name-input" placeholder="Enter player name..." style="flex-grow: 1; padding: 0.5em; font-size: 1em;">
+            <button type="button" id="delete-player-btn" style="background-color: #fd7e14; color: white; border: none;">Delete Player Stats</button>
+        </div>
     </div>
 
     <script>
@@ -65,6 +70,8 @@
         const pasteBtn = document.getElementById('paste-btn');
         const clearStatsBtn = document.getElementById('clear-stats-btn');
         const deleteTestBtn = document.getElementById('delete-test-btn');
+        const deletePlayerBtn = document.getElementById('delete-player-btn');
+        const playerNameInput = document.getElementById('player-name-input');
 
         const API_BASE_URL = ''; // Current origin
 
@@ -196,6 +203,40 @@
             } catch (error) {
                 alert(`❌ Error: ${error.message}`);
                 console.error('Error deleting test players:', error);
+            }
+        });
+
+        deletePlayerBtn.addEventListener('click', async () => {
+            const playerName = playerNameInput.value.trim();
+            if (!playerName) {
+                alert('⚠️ Please enter a player name.');
+                return;
+            }
+
+            const firstConfirm = confirm(`⚠️ This will permanently delete all statistics for player "${playerName}" and remove them from all matches.\n\nAre you sure you want to continue?`);
+            if (!firstConfirm) return;
+
+            const secondConfirm = confirm(`⚠️ FINAL WARNING: This action CANNOT be undone!\n\nAll stats for "${playerName}" will be PERMANENTLY deleted.\n\nDo you really want to proceed?`);
+            if (!secondConfirm) return;
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/delete-player-stats`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ playerName })
+                });
+
+                if (!response.ok) {
+                    const responseData = await response.json();
+                    throw new Error(responseData.message || 'Failed to delete player stats');
+                }
+
+                const responseData = await response.json();
+                alert('✅ ' + responseData.message);
+                playerNameInput.value = ''; // Clear input after successful deletion
+            } catch (error) {
+                alert(`❌ Error: ${error.message}`);
+                console.error('Error deleting player stats:', error);
             }
         });
 
