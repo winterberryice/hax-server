@@ -121,39 +121,43 @@ const server = http.createServer(async (req, res) => {
             res.end(JSON.stringify({ message: `Failed to stop room: ${error.message}` }));
         }
     } else if (pathname === '/clear-stats' && req.method === 'POST') {
-        try {
-            const statsTracker = getStatsTracker();
-            if (!statsTracker) {
-                res.writeHead(400, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ message: "Stats tracker not initialized. Start the room first." }));
-                return;
+        (async () => {
+            try {
+                const statsTracker = getStatsTracker();
+                if (!statsTracker) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ message: "Stats tracker not initialized. Start the room first." }));
+                    return;
+                }
+                await statsTracker.clearStats();
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ message: "Statistics cleared successfully." }));
+            } catch (error) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ message: `Failed to clear statistics: ${error.message}` }));
             }
-            statsTracker.clearStats();
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ message: "Statistics cleared successfully." }));
-        } catch (error) {
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ message: `Failed to clear statistics: ${error.message}` }));
-        }
+        })();
     } else if (pathname === '/delete-test-players' && req.method === 'POST') {
-        try {
-            const statsTracker = getStatsTracker();
-            if (!statsTracker) {
-                res.writeHead(400, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ message: "Stats tracker not initialized. Start the room first." }));
-                return;
+        (async () => {
+            try {
+                const statsTracker = getStatsTracker();
+                if (!statsTracker) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ message: "Stats tracker not initialized. Start the room first." }));
+                    return;
+                }
+                const deletedCount = await statsTracker.deleteTestPlayers();
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ message: `Deleted ${deletedCount} test player(s) and their statistics.` }));
+            } catch (error) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ message: `Failed to delete test players: ${error.message}` }));
             }
-            const deletedCount = statsTracker.deleteTestPlayers();
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ message: `Deleted ${deletedCount} test player(s) and their statistics.` }));
-        } catch (error) {
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ message: `Failed to delete test players: ${error.message}` }));
-        }
+        })();
     } else if (pathname === '/delete-player-stats' && req.method === 'POST') {
         let body = '';
         req.on('data', chunk => { body += chunk.toString(); });
-        req.on('end', () => {
+        req.on('end', async () => {
             try {
                 const { playerName } = JSON.parse(body);
                 if (!playerName) {
@@ -167,7 +171,7 @@ const server = http.createServer(async (req, res) => {
                     res.end(JSON.stringify({ message: "Stats tracker not initialized. Start the room first." }));
                     return;
                 }
-                const result = statsTracker.deletePlayerStats(playerName);
+                const result = await statsTracker.deletePlayerStats(playerName);
                 if (result === null) {
                     res.writeHead(404, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ message: `Player "${playerName}" not found.` }));

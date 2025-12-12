@@ -1,4 +1,6 @@
 import Database from 'better-sqlite3';
+import { mkdirSync } from 'fs';
+import { dirname } from 'path';
 
 /**
  * StatsDatabase - handles all SQLite operations for Haxball stats
@@ -6,6 +8,7 @@ import Database from 'better-sqlite3';
 export class StatsDatabase {
     constructor(dbPath) {
         this.db = new Database(dbPath);
+        this.dbPath = dbPath;
         this.db.pragma('journal_mode = WAL'); // Better performance
     }
 
@@ -133,6 +136,26 @@ export class StatsDatabase {
         // }
 
         console.log(`[DB] Schema up to date (version ${currentVersion})`);
+    }
+
+    /**
+     * Create a backup of the database file
+     * Stores backups in data/backups/ with timestamp from Date.now()
+     */
+    async createBackup() {
+        try {
+            const backupsDir = `${dirname(this.dbPath)}/backups`;
+            mkdirSync(backupsDir, { recursive: true });
+
+            const backupPath = `${backupsDir}/stats_backup_${Date.now()}.db`;
+            await this.db.backup(backupPath);
+
+            console.log(`[DB] Backup created: ${backupPath}`);
+            return backupPath;
+        } catch (error) {
+            console.error('[DB] Error creating backup:', error);
+            throw error;
+        }
     }
 
     /**
@@ -270,7 +293,11 @@ export class StatsDatabase {
     /**
      * Clear all statistics (delete all data from tables)
      */
-    clearStats() {
+    async clearStats() {
+        // Create backup first - if it fails, delete will not proceed
+        const backupPath = await this.createBackup();
+        console.log('[DB] Backup successful, proceeding with clear stats');
+
         const clearTransaction = this.db.transaction(() => {
             this.db.exec('DELETE FROM match_players');
             this.db.exec('DELETE FROM matches');
@@ -285,7 +312,11 @@ export class StatsDatabase {
      * Delete test players and their related data
      * Removes all players whose name starts with '___test'
      */
-    deleteTestPlayers() {
+    async deleteTestPlayers() {
+        // Create backup first - if it fails, delete will not proceed
+        const backupPath = await this.createBackup();
+        console.log('[DB] Backup successful, proceeding with delete test players');
+
         const deleteTransaction = this.db.transaction(() => {
             // Get all test player auths
             const testPlayers = this.db.prepare(`
@@ -329,7 +360,11 @@ export class StatsDatabase {
      * Delete a specific player and their related data
      * Removes a player by name (case-insensitive) and all their match records
      */
-    deletePlayerStats(playerName) {
+    async deletePlayerStats(playerName) {
+        // Create backup first - if it fails, delete will not proceed
+        const backupPath = await this.createBackup();
+        console.log('[DB] Backup successful, proceeding with delete player stats');
+
         const deleteTransaction = this.db.transaction(() => {
             // Get the player by name
             const player = this.db.prepare(`
