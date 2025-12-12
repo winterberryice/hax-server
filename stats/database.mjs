@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
-import { mkdirSync } from 'fs';
-import { dirname } from 'path';
+import { mkdirSync, readdirSync, statSync, copyFileSync, removeSync } from 'fs';
+import { dirname, join } from 'path';
 
 /**
  * StatsDatabase - handles all SQLite operations for Haxball stats
@@ -400,6 +400,111 @@ export class StatsDatabase {
         });
 
         return deleteTransaction();
+    }
+
+    /**
+     * List all available backups with metadata
+     */
+    listBackups() {
+        try {
+            const backupsDir = `${dirname(this.dbPath)}/backups`;
+
+            // Check if backups directory exists
+            let files;
+            try {
+                files = readdirSync(backupsDir);
+            } catch (e) {
+                // Directory doesn't exist yet
+                return [];
+            }
+
+            const backups = files
+                .filter(file => file.startsWith('stats_backup_') && file.endsWith('.db'))
+                .map(filename => {
+                    const filePath = join(backupsDir, filename);
+                    const stats = statSync(filePath);
+
+                    // Extract timestamp from filename: stats_backup_[TIMESTAMP].db
+                    const match = filename.match(/stats_backup_(\d+)\.db/);
+                    const timestamp = match ? parseInt(match[1]) : 0;
+
+                    return {
+                        filename,
+                        filepath: filePath,
+                        size: stats.size,
+                        timestamp,
+                        createdAt: stats.birthtime
+                    };
+                });
+
+            return backups;
+        } catch (error) {
+            console.error('[DB] Error listing backups:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Restore database from a backup file
+     * Note: This should only be called when room is stopped (no active connection)
+     */
+    async restoreBackup(filename) {
+        try {
+            const backupsDir = `${dirname(this.dbPath)}/backups`;
+            const backupPath = join(backupsDir, filename);
+
+            // Validate filename to prevent directory traversal
+            if (!filename.match(/^stats_backup_\d+\.db$/)) {
+                throw new Error('Invalid backup filename format');
+            }
+
+            // Check if backup exists
+            let stats;
+            try {
+                stats = statSync(backupPath);
+            } catch (e) {
+                throw new Error(`Backup file not found: ${filename}`);
+            }
+
+            // Close current database connection
+            this.db.close();
+
+            // Create a safety backup of current database before restoring
+            const safetyBackupPath = `${backupsDir}/stats_backup_${Date.now()}_safety.db`;
+            try {
+                copyFileSync(this.dbPath, safetyBackupPath);
+                console.log(`[DB] Safety backup created: ${safetyBackupPath}`);
+            } catch (e) {
+                console.error('[DB] Warning: Could not create safety backup:', e);
+            }
+
+            // Restore from backup
+            copyFileSync(backupPath, this.dbPath);
+            console.log(`[DB] Database restored from: ${backupPath}`);
+
+            // Reconnect to the restored database
+            this.db = new Database(this.dbPath);
+            this.db.pragma('journal_mode = WAL');
+            console.log('[DB] Database connection re-established after restore');
+
+            return {
+                message: `Database successfully restored from backup: ${filename}`,
+                restoredFrom: filename,
+                timestamp: parseInt(filename.match(/\d+/)[0])
+            };
+        } catch (error) {
+            console.error('[DB] Error restoring backup:', error);
+
+            // Try to reconnect to database in case of error
+            try {
+                this.db = new Database(this.dbPath);
+                this.db.pragma('journal_mode = WAL');
+            } catch (e) {
+                console.error('[DB] CRITICAL: Could not reconnect to database after restore error:', e);
+            }
+
+            throw error;
+        }
     }
 
     /**
