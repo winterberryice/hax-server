@@ -1,6 +1,7 @@
 import http from 'http';
 import fs from 'fs';
 import url from 'url';
+import path from 'path';
 import { start, stop, getRoomState, setStateUpdateCallback, getStatsTracker } from './haxball.mjs';
 
 const PORT = process.env.PORT || 8080;
@@ -72,6 +73,16 @@ const server = http.createServer(async (req, res) => {
             if (err) {
                 res.writeHead(500);
                 res.end('Error loading admin.html');
+            } else {
+                res.writeHead(200, { 'Content-Type': 'text/html' });
+                res.end(data);
+            }
+        });
+    } else if (pathname === '/backups') {
+        fs.readFile('backups.html', (err, data) => {
+            if (err) {
+                res.writeHead(500);
+                res.end('Error loading backups.html');
             } else {
                 res.writeHead(200, { 'Content-Type': 'text/html' });
                 res.end(data);
@@ -184,6 +195,96 @@ const server = http.createServer(async (req, res) => {
                 res.end(JSON.stringify({ message: `Failed to delete player stats: ${error.message}` }));
             }
         });
+    } else if (pathname === '/list-backups' && req.method === 'GET') {
+        (async () => {
+            try {
+                const statsTracker = getStatsTracker();
+                if (!statsTracker) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ message: "Stats tracker not initialized. Start the room first." }));
+                    return;
+                }
+                const backups = statsTracker.db.listBackups();
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(backups));
+            } catch (error) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ message: `Failed to list backups: ${error.message}` }));
+            }
+        })();
+    } else if (pathname === '/restore-backup' && req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => { body += chunk.toString(); });
+        req.on('end', async () => {
+            try {
+                const { status } = getRoomState();
+                if (status !== 'stopped') {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ message: `Cannot restore backup while room is ${status}. Please stop the room first.` }));
+                    return;
+                }
+
+                const { filename } = JSON.parse(body);
+                if (!filename) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ message: "Backup filename is required." }));
+                    return;
+                }
+
+                const statsTracker = getStatsTracker();
+                if (!statsTracker) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ message: "Stats tracker not initialized. Start the room first." }));
+                    return;
+                }
+
+                const result = await statsTracker.db.restoreBackup(filename);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ message: result.message, restoredFrom: result.restoredFrom }));
+            } catch (error) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ message: `Failed to restore backup: ${error.message}` }));
+            }
+        });
+    } else if (pathname === '/download-backup' && req.method === 'GET') {
+        (async () => {
+            try {
+                const { file } = parsedUrl.query;
+                if (!file) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ message: "Backup filename is required." }));
+                    return;
+                }
+
+                const statsTracker = getStatsTracker();
+                if (!statsTracker) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ message: "Stats tracker not initialized." }));
+                    return;
+                }
+
+                const backups = statsTracker.db.listBackups();
+                const backup = backups.find(b => b.filename === file);
+
+                if (!backup) {
+                    res.writeHead(404, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ message: "Backup file not found." }));
+                    return;
+                }
+
+                // Read and send the backup file
+                const fileContent = fs.readFileSync(backup.filepath);
+                res.writeHead(200, {
+                    'Content-Type': 'application/octet-stream',
+                    'Content-Disposition': `attachment; filename="${file}"`,
+                    'Content-Length': fileContent.length
+                });
+                res.end(fileContent);
+            } catch (error) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ message: `Failed to download backup: ${error.message}` }));
+            }
+        })();
     } else {
         res.writeHead(404, { 'Content-Type': 'text/plain' });
         res.end('Not Found');

@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Haxball Backups</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; padding: 1em; max-width: 900px; margin: 0 auto; }
+        h1, h2, h3 { color: #333; }
+        button { font-size: 1em; padding: 0.5em 1em; margin-right: 0.5em; cursor: pointer; }
+        button:disabled { cursor: not-allowed; opacity: 0.6; }
+        a { color: #007bff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        #status { background-color: #f4f4f4; padding: 1em; border-radius: 5px; margin-bottom: 1.5em; }
+        #backups-container { margin-top: 1.5em; }
+        .backup-item { border: 1px solid #ddd; border-radius: 5px; padding: 1em; margin-bottom: 1em; background-color: #f9f9f9; }
+        .backup-info { margin-bottom: 0.5em; }
+        .backup-info b { display: inline-block; min-width: 100px; }
+        .backup-actions { display: flex; gap: 0.5em; align-items: center; margin-top: 1em; flex-wrap: wrap; }
+        .backup-actions button { margin-right: 0; }
+        .warning { color: #dc3545; font-weight: bold; }
+        .success { color: #28a745; font-weight: bold; }
+        .loading { color: #666; font-style: italic; }
+        #empty-message { padding: 2em; text-align: center; color: #999; font-style: italic; }
+        .nav-links { margin-bottom: 2em; padding-bottom: 1em; border-bottom: 1px solid #ddd; }
+        .nav-links a { margin-right: 1em; }
+    </style>
+</head>
+<body>
+    <div class="nav-links">
+        <a href="/">← Back to Admin</a>
+    </div>
+
+    <h1>Database Backups</h1>
+
+    <div id="status">
+        <h2>Room Status</h2>
+        <p><b id="status-message">Connecting...</b></p>
+        <p id="room-warning" class="warning" style="display: none;">⚠️ Room is currently running. Please stop the room before restoring a backup.</p>
+    </div>
+
+    <div id="backups-container">
+        <h2>Available Backups</h2>
+        <p id="loading-message" class="loading">Loading backups...</p>
+        <div id="backups-list"></div>
+    </div>
+
+    <script>
+        const statusMessageEl = document.getElementById('status-message');
+        const roomWarningEl = document.getElementById('room-warning');
+        const backupsListEl = document.getElementById('backups-list');
+        const loadingMessageEl = document.getElementById('loading-message');
+        const API_BASE_URL = ''; // Current origin
+
+        let roomStatus = 'stopped';
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        function formatDate(timestamp) {
+            const date = new Date(parseInt(timestamp));
+            return date.toLocaleString();
+        }
+
+        function updateUI(state) {
+            roomStatus = state.status;
+            statusMessageEl.textContent = state.status_message || 'N/A';
+            statusMessageEl.style.color = state.status === 'running' ? 'green' : (state.status === 'stopped' ? 'red' : 'orange');
+
+            // Show warning if room is running
+            if (state.status === 'running') {
+                roomWarningEl.style.display = 'block';
+            } else {
+                roomWarningEl.style.display = 'none';
+            }
+
+            // Update restore buttons state
+            const restoreButtons = document.querySelectorAll('[data-restore-btn]');
+            restoreButtons.forEach(btn => {
+                btn.disabled = state.status !== 'stopped';
+            });
+        }
+
+        async function loadBackups() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/list-backups`);
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.message || 'Failed to load backups');
+                }
+
+                const backups = await response.json();
+                loadingMessageEl.style.display = 'none';
+
+                if (backups.length === 0) {
+                    backupsListEl.innerHTML = '<div id="empty-message">No backups found. Backups will be created automatically before destructive operations.</div>';
+                    return;
+                }
+
+                // Sort by timestamp descending (newest first)
+                backups.sort((a, b) => b.timestamp - a.timestamp);
+
+                backupsListEl.innerHTML = backups.map((backup, index) => `
+                    <div class="backup-item">
+                        <div class="backup-info">
+                            <b>Timestamp:</b> ${formatDate(backup.timestamp)}
+                        </div>
+                        <div class="backup-info">
+                            <b>File Size:</b> ${formatFileSize(backup.size)}
+                        </div>
+                        <div class="backup-info">
+                            <b>Filename:</b> <code>${backup.filename}</code>
+                        </div>
+                        <div class="backup-actions">
+                            <a href="${API_BASE_URL}/download-backup?file=${encodeURIComponent(backup.filename)}" download="${backup.filename}">
+                                <button type="button">📥 Download</button>
+                            </a>
+                            <button type="button" data-restore-btn data-file="${backup.filename}" ${roomStatus !== 'stopped' ? 'disabled' : ''}>
+                                🔄 Restore This Backup
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+
+                // Add event listeners to restore buttons
+                document.querySelectorAll('[data-restore-btn]').forEach(btn => {
+                    btn.addEventListener('click', handleRestore);
+                });
+
+            } catch (error) {
+                loadingMessageEl.style.display = 'none';
+                backupsListEl.innerHTML = `<div style="color: red; padding: 1em;">Error loading backups: ${error.message}</div>`;
+                console.error('Error loading backups:', error);
+            }
+        }
+
+        async function handleRestore(event) {
+            const btn = event.target;
+            const filename = btn.dataset.file;
+
+            if (roomStatus !== 'stopped') {
+                alert('⚠️ Room must be stopped before restoring a backup. Please stop the room first.');
+                return;
+            }
+
+            const firstConfirm = confirm(`⚠️ WARNING: Restoring a backup will replace the current database.\n\nBackup: ${filename}\n\nAre you sure you want to continue?`);
+            if (!firstConfirm) return;
+
+            const secondConfirm = confirm(`⚠️ FINAL WARNING: This action CANNOT be undone!\n\nThe current database will be PERMANENTLY replaced with the backup.\n\nDo you really want to proceed?`);
+            if (!secondConfirm) return;
+
+            try {
+                btn.disabled = true;
+                btn.textContent = '⏳ Restoring...';
+
+                const response = await fetch(`${API_BASE_URL}/restore-backup`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename })
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.message || 'Failed to restore backup');
+                }
+
+                const data = await response.json();
+                alert('✅ ' + data.message);
+                loadBackups(); // Reload the list
+
+            } catch (error) {
+                alert(`❌ Error: ${error.message}`);
+                console.error('Error restoring backup:', error);
+                btn.disabled = roomStatus !== 'stopped';
+                btn.textContent = '🔄 Restore This Backup';
+            }
+        }
+
+        // Initialize
+        loadBackups();
+
+        // Setup SSE connection for real-time status updates
+        const eventSource = new EventSource('/events');
+
+        eventSource.onmessage = (event) => {
+            const state = JSON.parse(event.data);
+            updateUI(state);
+        };
+
+        eventSource.onerror = (err) => {
+            console.error('EventSource failed:', err);
+            statusMessageEl.textContent = 'Connection to server lost. Please refresh the page.';
+            statusMessageEl.style.color = 'red';
+        };
+    </script>
+</body>
+</html>
